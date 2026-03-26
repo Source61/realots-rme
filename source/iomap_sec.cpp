@@ -32,6 +32,9 @@
 
 namespace fs = std::filesystem;
 
+bool IOMapSec::disguisesLoaded = false;
+std::map<uint16_t, uint16_t> IOMapSec::disguiseMap;
+
 // Case-insensitive string comparison
 static bool iequals(const std::string& a, const std::string& b) {
   if(a.size() != b.size()) return false;
@@ -203,13 +206,29 @@ bool IOMapSec::parseItemList(const std::string& line, size_t& pos, std::vector<P
 
 Item* IOMapSec::createItemFromParsed(const ParsedItem& parsed) {
   // .sec TypeIDs are raw client/sprite IDs — translate to OTB server ID
-  uint16_t serverId = parsed.id;
-  auto it = g_items.clientToServer.find(parsed.id);
+  uint16_t clientId = parsed.id;
+  uint16_t lookupId = clientId;
+
+  // If this is a disguise item, use the disguise target's clientID for OTB lookup
+  auto disguiseIt = disguiseMap.find(clientId);
+  if(disguiseIt != disguiseMap.end()) {
+    lookupId = disguiseIt->second;
+  }
+
+  // Find OTB server ID from client ID
+  uint16_t serverId = lookupId;
+  auto it = g_items.clientToServer.find(lookupId);
   if(it != g_items.clientToServer.end()) {
     serverId = it->second;
   }
+
   Item* item = Item::Create(serverId);
   if(!item) return nullptr;
+
+  // Store original .sec TypeID (clientID) for round-trip saving
+  if(lookupId != clientId) {
+    item->setAttribute("sec_typeid", (int32_t)clientId);
+  }
 
   // Amount (stackable count, fluid type)
   if(parsed.amount >= 0) item->setSubtype(parsed.amount);
@@ -375,6 +394,63 @@ bool IOMapSec::loadSectorFile(Map& map, const std::string& filepath, int sector_
   return true;
 }
 
+void IOMapSec::loadDisguises(const std::string& dataDir) {
+  if(disguisesLoaded) return;
+  disguisesLoaded = true;
+
+  std::string filepath = dataDir + "objects.srv";
+  std::ifstream file(filepath);
+  if(!file.is_open()) return;
+
+  // Parse objects.srv for disguise entries
+  // Format: TypeID=N, Flags={..., Disguise, ...}, Attributes={..., DisguiseTarget=N, ...}
+  int currentTypeID = -1;
+  bool hasDisguise = false;
+  int disguiseTarget = -1;
+
+  std::string line;
+  while(std::getline(file, line)) {
+    if(line.empty() || line[0] == '#') continue;
+
+    size_t eqPos = line.find('=');
+    if(eqPos == std::string::npos) continue;
+
+    std::string key;
+    for(size_t i = 0; i < eqPos; ++i) {
+      if(!std::isspace((unsigned char)line[i])) key += line[i];
+    }
+
+    std::string value = line.substr(eqPos + 1);
+
+    if(key == "TypeID") {
+      // Save previous entry
+      if(currentTypeID >= 0 && hasDisguise && disguiseTarget >= 0) {
+        disguiseMap[(uint16_t)currentTypeID] = (uint16_t)disguiseTarget;
+      }
+      currentTypeID = std::atoi(value.c_str());
+      hasDisguise = false;
+      disguiseTarget = -1;
+    } else if(key == "Flags") {
+      std::string lower;
+      for(char c : value) lower += std::tolower((unsigned char)c);
+      if(lower.find("disguise") != std::string::npos) {
+        hasDisguise = true;
+      }
+    } else if(key == "Attributes") {
+      std::string lower;
+      for(char c : value) lower += std::tolower((unsigned char)c);
+      size_t pos = lower.find("disguisetarget=");
+      if(pos != std::string::npos) {
+        disguiseTarget = std::atoi(value.c_str() + pos + 15);
+      }
+    }
+  }
+  // Last entry
+  if(currentTypeID >= 0 && hasDisguise && disguiseTarget >= 0) {
+    disguiseMap[(uint16_t)currentTypeID] = (uint16_t)disguiseTarget;
+  }
+}
+
 bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   wxFileName fn(identifier);
   std::string dirPath = nstr(fn.GetPath(wxPATH_GET_SEPARATOR | wxPATH_GET_VOLUME));
@@ -431,6 +507,15 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
       }
     }
   }
+
+  // Load disguise info from objects.srv to fix rendering of disguised items
+  // Try common relative paths from the .sec directory
+  std::string datDir;
+  for(const auto& rel : {"../dat/", "../data/dat/", "dat/", "../"}) {
+    std::string candidate = dirPath + rel;
+    if(fs::exists(candidate + "objects.srv")) { datDir = candidate; break; }
+  }
+  if(!datDir.empty()) loadDisguises(datDir);
 
   g_gui.SetLoadDone(0, "Loading sector files...");
 
@@ -540,8 +625,13 @@ void IOMapSec::writeItemAttributes(std::ofstream& out, Item* item) {
 
 void IOMapSec::writeItem(std::ofstream& out, Item* item, bool first) {
   if(!first) out << ", ";
-  // Write client/sprite ID (CipSoft TypeID), not OTB server ID
-  out << item->getClientID();
+  // Write original .sec TypeID if stored (for disguise items), otherwise client ID
+  const int32_t* secTypeId = item->getIntegerAttribute("sec_typeid");
+  if(secTypeId) {
+    out << *secTypeId;
+  } else {
+    out << item->getClientID();
+  }
   writeItemAttributes(out, item);
 
   // Container contents

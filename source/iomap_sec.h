@@ -88,6 +88,11 @@ private:
   // Writer helpers
   void writeItem(std::ofstream& out, Item* item, bool first);
   void writeItemAttributes(std::ofstream& out, Item* item);
+
+  // objects.srv: clientID -> disguiseTargetClientID for items that render as another item
+  static void loadDisguises(const std::string& dataDir);
+  static bool disguisesLoaded;
+  static std::map<uint16_t, uint16_t> disguiseMap;
 };
 
 #endif // RME_IOMAP_SEC_H_
