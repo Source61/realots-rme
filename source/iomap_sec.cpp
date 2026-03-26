@@ -202,7 +202,13 @@ bool IOMapSec::parseItemList(const std::string& line, size_t& pos, std::vector<P
 }
 
 Item* IOMapSec::createItemFromParsed(const ParsedItem& parsed) {
-  Item* item = Item::Create(parsed.id);
+  // .sec TypeIDs are raw client/sprite IDs — translate to OTB server ID
+  uint16_t serverId = parsed.id;
+  auto it = g_items.clientToServer.find(parsed.id);
+  if(it != g_items.clientToServer.end()) {
+    serverId = it->second;
+  }
+  Item* item = Item::Create(serverId);
   if(!item) return nullptr;
 
   // Amount (stackable count, fluid type)
@@ -414,6 +420,18 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   map.width = (maxSectorX + 1) * 32;
   map.height = (maxSectorY + 1) * 32;
 
+  // Build clientID -> serverID reverse map for .sec TypeID translation
+  // .sec files use CipSoft's raw TypeIDs which are client/sprite IDs,
+  // but RME's Item::Create() expects OTB server IDs.
+  if(g_items.clientToServer.empty()) {
+    for(uint16_t sid = g_items.getMinID(); sid <= g_items.getMaxID(); ++sid) {
+      const ItemType& t = g_items.getItemType(sid);
+      if(t.id != 0 && t.clientID != 0) {
+        g_items.clientToServer[t.clientID] = sid;
+      }
+    }
+  }
+
   g_gui.SetLoadDone(0, "Loading sector files...");
 
   int loaded = 0;
@@ -522,7 +540,8 @@ void IOMapSec::writeItemAttributes(std::ofstream& out, Item* item) {
 
 void IOMapSec::writeItem(std::ofstream& out, Item* item, bool first) {
   if(!first) out << ", ";
-  out << item->getID();
+  // Write client/sprite ID (CipSoft TypeID), not OTB server ID
+  out << item->getClientID();
   writeItemAttributes(out, item);
 
   // Container contents

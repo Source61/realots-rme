@@ -401,8 +401,12 @@ protected:
 
 	ItemType dummy;
 
+	// Reverse map: clientID -> serverID (for .sec file loading)
+	std::map<uint16_t, uint16_t> clientToServer;
+
 	friend class GameSprite;
 	friend class Item;
+	friend class IOMapSec;
 };
 
 extern ItemDatabase g_items;
