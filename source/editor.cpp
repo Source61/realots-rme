@@ -20,6 +20,7 @@
 #include "editor.h"
 #include "materials.h"
 #include "map.h"
+#include "iomap_sec.h"
 #include "complexitem.h"
 #include "settings.h"
 #include "gui.h"
@@ -96,21 +97,22 @@ Editor::Editor(CopyBuffer& copybuffer, const FileName& fn) :
 	copybuffer(copybuffer),
 	replace_brush(nullptr)
 {
+	wxString ext = fn.GetExt().Lower();
 	MapVersion ver;
-	if(!IOMapOTBM::getVersionInfo(fn, ver)) {
-		// g_gui.PopupDialog("Error", "Could not open file \"" + fn.GetFullPath() + "\".", wxOK);
-		throw std::runtime_error("Could not open file \"" + nstr(fn.GetFullPath()) + "\".\nThis is not a valid OTBM file or it does not exist.");
-	}
 
-	/*
-	if(ver < CLIENT_VERSION_760) {
-		long b = g_gui.PopupDialog("Error", "Unsupported Client Version (pre 7.6), do you want to try to load the map anyways?", wxYES | wxNO);
-		if(b == wxID_NO) {
-			valid_state = false;
-			return;
+	if(ext == "sec") {
+		// .sec files don't contain version info — use current editor version
+		ClientVersionID currentVer = g_gui.GetCurrentVersionID();
+		if(currentVer == CLIENT_VERSION_NONE) {
+			throw std::runtime_error("Please select a client version before opening .sec files.");
+		}
+		ver.otbm = MAP_OTBM_4;
+		ver.client = currentVer;
+	} else {
+		if(!IOMapOTBM::getVersionInfo(fn, ver)) {
+			throw std::runtime_error("Could not open file \"" + nstr(fn.GetFullPath()) + "\".\nThis is not a valid OTBM file or it does not exist.");
 		}
 	}
-	*/
 
 	bool success = true;
 	if(g_gui.GetCurrentVersionID() != ver.client) {
@@ -128,18 +130,8 @@ Editor::Editor(CopyBuffer& copybuffer, const FileName& fn) :
 	}
 
 	if(success) {
-		ScopedLoadingBar LoadingBar("Loading OTBM map...");
+		ScopedLoadingBar LoadingBar(ext == "sec" ? "Loading sector map..." : "Loading OTBM map...");
 		success = map.open(nstr(fn.GetFullPath()));
-		/* TODO
-		if(success && ver.client == CLIENT_VERSION_854_BAD) {
-			int ok = g_gui.PopupDialog("Incorrect OTB", "This map has been saved with an incorrect OTB version, do you want to convert it to the new OTB version?\n\nIf you are not sure, click Yes.", wxYES | wxNO);
-
-			if(ok == wxID_YES){
-				ver.client = CLIENT_VERSION_854;
-				map.convert(ver);
-			}
-		}
-		*/
 	}
 }
 
@@ -344,12 +336,20 @@ void Editor::saveMap(FileName filename, bool showdialog)
 		map.filename = fn.GetFullPath().mb_str(wxConvUTF8);
 		map.name = fn.GetFullName().mb_str(wxConvUTF8);
 
+		bool save_sec = (fn.GetExt().Lower() == "sec");
+
 		if(showdialog)
-			g_gui.CreateLoadBar("Saving OTBM map...");
+			g_gui.CreateLoadBar(save_sec ? "Saving sector map..." : "Saving OTBM map...");
 
 		// Perform the actual save
-		IOMapOTBM mapsaver(map.getVersion());
-		bool success = mapsaver.saveMap(map, fn);
+		bool success;
+		if(save_sec) {
+			IOMapSec mapsaver(map.getVersion());
+			success = mapsaver.saveMap(map, fn);
+		} else {
+			IOMapOTBM mapsaver(map.getVersion());
+			success = mapsaver.saveMap(map, fn);
+		}
 
 		if(showdialog)
 			g_gui.DestroyLoadBar();

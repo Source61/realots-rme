@@ -526,7 +526,7 @@ bool MainFrame::DoQuerySave(bool doclose)
 			if(g_gui.GetCurrentMap().hasFile()) {
 				g_gui.SaveCurrentMap(true);
 			} else {
-				wxFileDialog file(this, "Save...", "", "", "*.otbm", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+				wxFileDialog file(this, "Save...", "", "", MAP_SAVE_FILE_WILDCARD, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 				int32_t result = file.ShowModal();
 				if(result == wxID_OK) {
 					g_gui.SaveCurrentMap(file.GetPath(), true);

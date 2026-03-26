@@ -130,6 +130,7 @@ protected:
 
 	friend class IOMapOTBM;
 	friend class IOMapOTMM;
+	friend class IOMapSec;
 	friend class Editor;
 
 public:

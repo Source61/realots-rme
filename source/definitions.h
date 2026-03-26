@@ -105,11 +105,11 @@
 #   endif
 #endif
 
-#define MAP_LOAD_FILE_WILDCARD_OTGZ "OpenTibia Binary Map (*.otbm;*.otgz)|*.otbm;*.otgz"
-#define MAP_SAVE_FILE_WILDCARD_OTGZ "OpenTibia Binary Map (*.otbm)|*.otbm|Compressed OpenTibia Binary Map (*.otgz)|*.otgz"
+#define MAP_LOAD_FILE_WILDCARD_OTGZ "Map Files (*.otbm;*.otgz;*.sec)|*.otbm;*.otgz;*.sec|OpenTibia Binary Map (*.otbm;*.otgz)|*.otbm;*.otgz|Sector Files (*.sec)|*.sec"
+#define MAP_SAVE_FILE_WILDCARD_OTGZ "OpenTibia Binary Map (*.otbm)|*.otbm|Compressed OpenTibia Binary Map (*.otgz)|*.otgz|Sector Files (*.sec)|*.sec"
 
-#define MAP_LOAD_FILE_WILDCARD "OpenTibia Binary Map (*.otbm)|*.otbm"
-#define MAP_SAVE_FILE_WILDCARD "OpenTibia Binary Map (*.otbm)|*.otbm"
+#define MAP_LOAD_FILE_WILDCARD "Map Files (*.otbm;*.sec)|*.otbm;*.sec|OpenTibia Binary Map (*.otbm)|*.otbm|Sector Files (*.sec)|*.sec"
+#define MAP_SAVE_FILE_WILDCARD "OpenTibia Binary Map (*.otbm)|*.otbm|Sector Files (*.sec)|*.sec"
 
 // wxString conversions
 #define nstr(str) std::string((const char*)(str.mb_str(wxConvUTF8)))

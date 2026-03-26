@@ -20,6 +20,7 @@
 #include "gui.h" // loadbar
 
 #include "map.h"
+#include "iomap_sec.h"
 
 #include <sstream>
 
@@ -49,22 +50,32 @@ bool Map::open(const std::string file)
 
 	tilecount = 0;
 
-	IOMapOTBM maploader(getVersion());
+	wxFileName fn = wxstr(file);
+	wxString ext = fn.GetExt().Lower();
 
-	bool success = maploader.loadMap(*this, wxstr(file));
+	IOMap* maploader;
+	IOMapOTBM otbmLoader(getVersion());
+	IOMapSec secLoader(getVersion());
 
-	mapVersion = maploader.version;
+	if(ext == "sec") {
+		maploader = &secLoader;
+	} else {
+		maploader = &otbmLoader;
+	}
 
-	warnings = maploader.getWarnings();
+	bool success = maploader->loadMap(*this, wxstr(file));
+
+	mapVersion = maploader->version;
+
+	warnings = maploader->getWarnings();
 
 	if(!success) {
-		error = maploader.getError();
+		error = maploader->getError();
 		return false;
 	}
 
 	has_changed = false;
 
-	wxFileName fn = wxstr(file);
 	filename = fn.GetFullPath().mb_str(wxConvUTF8);
 	name = fn.GetFullName().mb_str(wxConvUTF8);
 
