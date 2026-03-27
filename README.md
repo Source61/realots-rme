@@ -2,6 +2,7 @@ What is this?
 =============
 
 This is a map editor for OpenTibia, which is an open source implementation of the MMORPG Tibia with Realots SEC support.
+Alternatively called "Realots RME".
 
 I want to contribute
 ====================
