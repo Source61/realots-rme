@@ -57,6 +57,36 @@ public:
   };
   static std::map<uint16_t, SecObjectInfo> objectInfo;
 
+  // Monster data from .mon files
+  struct SecMonsterType {
+    int raceNumber = 0;
+    std::string name;
+    std::string article;
+    int outfitId = 0;
+    int outfitColors[4] = {0, 0, 0, 0}; // head, body, legs, feet
+    int outfitItemType = 0; // when outfitId == 0
+    int corpse = 0;
+    int experience = 0;
+    int hitpoints = 0;
+    int attack = 0;
+    int defend = 0;
+    int armor = 0;
+  };
+  static std::map<int, SecMonsterType> monsterTypes; // keyed by raceNumber
+  static bool monsterTypesLoaded;
+  static void loadMonsterTypes(const std::string& monDir);
+
+  // Spawn data from monster.db
+  struct SecSpawnEntry {
+    int raceNumber = 0;
+    int x = 0, y = 0, z = 0;
+    int radius = 0;
+    int amount = 0;
+    int regen = 0;
+  };
+  static std::vector<SecSpawnEntry> spawnEntries;
+  static void loadMonsterDb(const std::string& filepath);
+
 private:
   bool loadSectorFile(Map& map, const std::string& filepath, int sector_x, int sector_y, int floor_z);
 

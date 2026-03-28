@@ -25,6 +25,7 @@
 #include "gui.h"
 #include "materials.h"
 #include "palette_window.h"
+#include "creatures.h"
 
 #include <fstream>
 #include <filesystem>
@@ -35,6 +36,9 @@ namespace fs = std::filesystem;
 
 bool IOMapSec::objectInfoLoaded = false;
 std::map<uint16_t, IOMapSec::SecObjectInfo> IOMapSec::objectInfo;
+bool IOMapSec::monsterTypesLoaded = false;
+std::map<int, IOMapSec::SecMonsterType> IOMapSec::monsterTypes;
+std::vector<IOMapSec::SecSpawnEntry> IOMapSec::spawnEntries;
 
 // Case-insensitive string comparison
 static bool iequals(const std::string& a, const std::string& b) {
@@ -482,6 +486,126 @@ void IOMapSec::loadObjectsSrv(const std::string& dataDir) {
   commitEntry();
 }
 
+void IOMapSec::loadMonsterTypes(const std::string& monDir) {
+  if(monsterTypesLoaded) return;
+  monsterTypesLoaded = true;
+
+  for(const auto& entry : fs::directory_iterator(monDir)) {
+    if(!entry.is_regular_file()) continue;
+    std::string ext = entry.path().extension().string();
+    for(char& c : ext) c = std::tolower((unsigned char)c);
+    if(ext != ".mon") continue;
+
+    std::ifstream file(entry.path().string());
+    if(!file.is_open()) continue;
+
+    SecMonsterType mon;
+    std::string line;
+    while(std::getline(file, line)) {
+      if(line.empty() || line[0] == '#') continue;
+      size_t eqPos = line.find('=');
+      if(eqPos == std::string::npos) continue;
+
+      std::string key;
+      for(size_t i = 0; i < eqPos; ++i) {
+        if(!std::isspace((unsigned char)line[i])) key += std::tolower((unsigned char)line[i]);
+      }
+      std::string value = line.substr(eqPos + 1);
+      // Trim leading whitespace from value
+      size_t vstart = 0;
+      while(vstart < value.size() && std::isspace((unsigned char)value[vstart])) ++vstart;
+      value = value.substr(vstart);
+
+      if(key == "racenumber") {
+        mon.raceNumber = std::atoi(value.c_str());
+      } else if(key == "name") {
+        // Extract quoted string
+        size_t q1 = value.find('"');
+        size_t q2 = value.find('"', q1 + 1);
+        if(q1 != std::string::npos && q2 != std::string::npos) mon.name = value.substr(q1 + 1, q2 - q1 - 1);
+      } else if(key == "article") {
+        size_t q1 = value.find('"');
+        size_t q2 = value.find('"', q1 + 1);
+        if(q1 != std::string::npos && q2 != std::string::npos) mon.article = value.substr(q1 + 1, q2 - q1 - 1);
+      } else if(key == "outfit") {
+        // Format: (outfitId, head-body-legs-feet) or (0, objectTypeId)
+        size_t p1 = value.find('(');
+        if(p1 != std::string::npos) {
+          mon.outfitId = std::atoi(value.c_str() + p1 + 1);
+          size_t comma = value.find(',', p1);
+          if(comma != std::string::npos) {
+            std::string rest = value.substr(comma + 1);
+            // Trim
+            size_t rs = 0;
+            while(rs < rest.size() && std::isspace((unsigned char)rest[rs])) ++rs;
+            rest = rest.substr(rs);
+            if(mon.outfitId == 0) {
+              mon.outfitItemType = std::atoi(rest.c_str());
+            } else {
+              // Parse head-body-legs-feet byte sequence
+              int ci = 0;
+              size_t pos = 0;
+              while(ci < 4 && pos < rest.size()) {
+                mon.outfitColors[ci] = std::atoi(rest.c_str() + pos);
+                ++ci;
+                size_t dash = rest.find('-', pos);
+                if(dash == std::string::npos) break;
+                pos = dash + 1;
+              }
+            }
+          }
+        }
+      } else if(key == "corpse") {
+        mon.corpse = std::atoi(value.c_str());
+      } else if(key == "experience") {
+        mon.experience = std::atoi(value.c_str());
+      } else if(key == "attack") {
+        mon.attack = std::atoi(value.c_str());
+      } else if(key == "defend") {
+        mon.defend = std::atoi(value.c_str());
+      } else if(key == "armor") {
+        mon.armor = std::atoi(value.c_str());
+      } else if(key == "skills") {
+        // Extract HitPoints from Skills list: (HitPoints, max, ...)
+        std::string lower;
+        for(char c : value) lower += std::tolower((unsigned char)c);
+        size_t hp = lower.find("hitpoints");
+        if(hp != std::string::npos) {
+          size_t comma1 = value.find(',', hp);
+          if(comma1 != std::string::npos) {
+            mon.hitpoints = std::atoi(value.c_str() + comma1 + 1);
+          }
+        }
+      }
+      // Other fields (flags, spells, inventory, talk) stored as raw strings if needed later
+    }
+
+    if(mon.raceNumber > 0 && !mon.name.empty()) {
+      monsterTypes[mon.raceNumber] = mon;
+    }
+  }
+}
+
+void IOMapSec::loadMonsterDb(const std::string& filepath) {
+  spawnEntries.clear();
+  std::ifstream file(filepath);
+  if(!file.is_open()) return;
+
+  std::string line;
+  while(std::getline(file, line)) {
+    if(line.empty()) continue;
+    // Skip comment lines
+    size_t first = line.find_first_not_of(" \t");
+    if(first == std::string::npos || line[first] == '#') continue;
+
+    // Data line: Race X Y Z Radius Amount Regen
+    SecSpawnEntry entry;
+    if(sscanf(line.c_str(), " %d %d %d %d %d %d %d", &entry.raceNumber, &entry.x, &entry.y, &entry.z, &entry.radius, &entry.amount, &entry.regen) == 7) {
+      spawnEntries.push_back(entry);
+    }
+  }
+}
+
 bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   wxFileName fn(identifier);
   std::string dirPath = nstr(fn.GetPath(wxPATH_GET_SEPARATOR | wxPATH_GET_VOLUME));
@@ -558,6 +682,40 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
         if(pal) pal->AddRAWTilesetPage("Disguise", dtc);
       }
     }
+  }
+
+  // Load monster types from .mon files
+  std::string monDir;
+  for(const auto& rel : {"../mon/", "../data/mon/", "mon/", "../"}) {
+    std::string candidate = dirPath + rel;
+    if(fs::is_directory(candidate)) { monDir = candidate; break; }
+  }
+  if(!monDir.empty()) {
+    loadMonsterTypes(monDir);
+    // Register monsters in the creature database
+    for(auto& pair : monsterTypes) {
+      const SecMonsterType& mon = pair.second;
+      if(g_creatures[mon.name] != nullptr) continue;
+      Outfit outfit;
+      outfit.lookType = mon.outfitId;
+      if(mon.outfitId == 0) {
+        outfit.lookItem = mon.outfitItemType;
+      } else {
+        outfit.lookHead = mon.outfitColors[0];
+        outfit.lookBody = mon.outfitColors[1];
+        outfit.lookLegs = mon.outfitColors[2];
+        outfit.lookFeet = mon.outfitColors[3];
+      }
+      g_creatures.addCreatureType(mon.name, false, outfit);
+    }
+    g_materials.createOtherTileset();
+    g_gui.RebuildPalettes();
+  }
+
+  // Load monster.db spawn database
+  if(!datDir.empty()) {
+    std::string monsterDbPath = datDir + "monster.db";
+    if(fs::exists(monsterDbPath)) loadMonsterDb(monsterDbPath);
   }
 
   g_gui.SetLoadDone(0, "Loading sector files...");
