@@ -79,7 +79,12 @@ void BrowseTileListBox::OnDrawItem(wxDC& dc, const wxRect& rect, size_t n) const
 	}
 
 	wxString label;
-	label << item->getID() << " - " << item->getName();
+	const int32_t* secTypeId = item->getIntegerAttribute("sec_typeid");
+	if(secTypeId) {
+		label << *secTypeId << " [D>" << item->getClientID() << "] - " << item->getName();
+	} else {
+		label << item->getClientID() << " - " << item->getName();
+	}
 	dc.DrawText(label, rect.GetX() + 40, rect.GetY() + 6);
 }
 

@@ -53,6 +53,8 @@ protected:
 	wxTextCtrl* description_field;
 	std::vector<ContainerItemButton*> container_items;
 
+	void addItemIdRows(wxSizer* sizer, Item* item);
+
 	friend class ContainerItemButton;
 	friend class ContainerItemPopupMenu;
 

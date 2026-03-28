@@ -84,8 +84,16 @@ wxWindow* PropertiesWindow::createGeneralPanel(wxWindow* parent)
 	wxFlexGridSizer* gridsizer = newd wxFlexGridSizer(2, 10, 10);
 	gridsizer->AddGrowableCol(1);
 
-	gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "ID " + i2ws(edit_item->getID())));
-	gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "\"" + wxstr(edit_item->getName()) + "\""));
+	const int32_t* secTypeId = edit_item->getIntegerAttribute("sec_typeid");
+	if(secTypeId) {
+		gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "ID " + i2ws(*secTypeId)));
+		gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "\"" + wxstr(edit_item->getName()) + "\""));
+		gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "Disguise ID"));
+		gridsizer->Add(newd wxStaticText(panel, wxID_ANY, i2ws(edit_item->getClientID())));
+	} else {
+		gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "ID " + i2ws(edit_item->getClientID())));
+		gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "\"" + wxstr(edit_item->getName()) + "\""));
+	}
 
 	gridsizer->Add(newd wxStaticText(panel, wxID_ANY, "Action ID"));
 	wxSpinCtrl* action_id_field = newd wxSpinCtrl(panel, wxID_ANY, i2ws(edit_item->getActionID()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 0xFFFF, edit_item->getActionID());

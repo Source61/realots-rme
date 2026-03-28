@@ -32,6 +32,7 @@
 #include "application.h"
 #include "old_properties_window.h"
 #include "container_properties_window.h"
+#include "iomap_sec.h"
 
 // ============================================================================
 // Old Properties Window
@@ -65,8 +66,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 		subsizer->AddGrowableCol(1);
 
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "ID " + i2ws(item->getID())));
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(item->getName()) + "\""));
+		addItemIdRows(subsizer, item);
 
 		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Action ID"));
 		action_id_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_item->getActionID()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 0xFFFF, edit_item->getActionID());
@@ -128,8 +128,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 		subsizer->AddGrowableCol(1);
 
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "ID " + i2ws(item->getID())));
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(item->getName()) + "\""));
+		addItemIdRows(subsizer, item);
 
 		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Action ID"));
 		action_id_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_item->getActionID()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 0xFFFF, edit_item->getActionID());
@@ -159,8 +158,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 		subsizer->AddGrowableCol(1);
 
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "ID " + i2ws(item->getID())));
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(item->getName()) + "\""));
+		addItemIdRows(subsizer, item);
 
 		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Type"));
 
@@ -205,8 +203,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 
 		subsizer->AddGrowableCol(1);
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "ID " + i2ws(item->getID())));
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(item->getName()) + "\""));
+		addItemIdRows(subsizer, item);
 
 		const Towns& towns = map->towns;
 		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Depot ID"));
@@ -266,8 +263,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 		wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 		subsizer->AddGrowableCol(1);
 
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "ID " + i2ws(item->getID())));
-		subsizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(item->getName()) + "\""));
+		addItemIdRows(subsizer, item);
 
 		subsizer->Add(newd wxStaticText(this, wxID_ANY, (item->isCharged()? "Charges" : "Count")));
 		int max_count = 100;
@@ -466,6 +462,26 @@ void OldPropertiesWindow::OnFocusChange(wxFocusEvent& event)
 		text->SetSelection(-1, -1);
 }
 
+void OldPropertiesWindow::addItemIdRows(wxSizer* sizer, Item* item) {
+	const int32_t* secTypeId = item->getIntegerAttribute("sec_typeid");
+	if(secTypeId) {
+		// Disguised item: show the real TypeID as ID, and the disguise target
+		sizer->Add(newd wxStaticText(this, wxID_ANY, "ID " + i2ws(*secTypeId)));
+		sizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(item->getName()) + "\""));
+		sizer->Add(newd wxStaticText(this, wxID_ANY, "Disguise ID"));
+		sizer->Add(newd wxStaticText(this, wxID_ANY, i2ws(item->getClientID())));
+	} else {
+		sizer->Add(newd wxStaticText(this, wxID_ANY, "ID " + i2ws(item->getClientID())));
+		sizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(item->getName()) + "\""));
+		// Show Disguise ID only if objects.srv marks this item as a disguise type
+		auto infoIt = IOMapSec::objectInfo.find(item->getClientID());
+		if(infoIt != IOMapSec::objectInfo.end() && infoIt->second.isDisguise) {
+			sizer->Add(newd wxStaticText(this, wxID_ANY, "Disguise ID"));
+			sizer->Add(newd wxStaticText(this, wxID_ANY, i2ws(infoIt->second.disguiseTarget)));
+		}
+	}
+}
+
 void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 {
 	if(edit_item) {
@@ -593,7 +609,7 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 		if(aid_changed) {
 			edit_item->setActionID(new_aid);
 		}
-		
+
 	} else if(edit_creature) {
 		int new_spawntime = count_field->GetValue();
 		edit_creature->setSpawnTime(new_spawntime);
