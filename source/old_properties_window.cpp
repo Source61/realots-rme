@@ -33,14 +33,19 @@
 #include "old_properties_window.h"
 #include "container_properties_window.h"
 #include "iomap_sec.h"
+#include <cmath>
 
 // ============================================================================
 // Old Properties Window
+
+enum { RACE_ID_SPIN = wxID_HIGHEST + 100, SEC_RADIUS_SPIN = wxID_HIGHEST + 101 };
 
 BEGIN_EVENT_TABLE(OldPropertiesWindow, wxDialog)
 	EVT_SET_FOCUS(OldPropertiesWindow::OnFocusChange)
 	EVT_BUTTON(wxID_OK, OldPropertiesWindow::OnClickOK)
 	EVT_BUTTON(wxID_CANCEL, OldPropertiesWindow::OnClickCancel)
+	EVT_SPINCTRL(RACE_ID_SPIN, OldPropertiesWindow::OnRaceIdChanged)
+	EVT_SPINCTRL(SEC_RADIUS_SPIN, OldPropertiesWindow::OnSecRadiusChanged)
 END_EVENT_TABLE()
 
 OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, const Tile* tile_parent, Item* item, wxPoint pos) :
@@ -351,9 +356,20 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	splash_type_field(nullptr),
 	text_field(nullptr),
 	description_field(nullptr),
+	race_id_field(nullptr),
+	creature_name_label(nullptr),
+	amount_field(nullptr),
+	sec_radius_field(nullptr),
+	visual_radius_label(nullptr),
 	destination_field(nullptr)
 {
 	ASSERT(edit_creature);
+
+	// Look up race ID for this creature from objects.srv monster data
+	int currentRaceId = 0;
+	for(auto& pair : IOMapSec::monsterTypes) {
+		if(pair.second.name == edit_creature->getName()) { currentRaceId = pair.first; break; }
+	}
 
 	wxSizer* topsizer = newd wxBoxSizer(wxVERTICAL);
 	wxSizer* boxsizer = newd wxStaticBoxSizer(wxVERTICAL, this, "Creature Properties");
@@ -361,12 +377,18 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 	subsizer->AddGrowableCol(1);
 
-	subsizer->Add(newd wxStaticText(this, wxID_ANY, "Creature "));
-	subsizer->Add(newd wxStaticText(this, wxID_ANY, "\"" + wxstr(edit_creature->getName()) + "\""), wxSizerFlags(1).Expand());
+	// Race ID (editable)
+	subsizer->Add(newd wxStaticText(this, wxID_ANY, "Race ID"));
+	race_id_field = newd wxSpinCtrl(this, RACE_ID_SPIN, i2ws(currentRaceId), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 9999, currentRaceId);
+	subsizer->Add(race_id_field, wxSizerFlags(1).Expand());
 
-	subsizer->Add(newd wxStaticText(this, wxID_ANY, "Spawn interval"));
-	count_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_creature->getSpawnTime()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 10, 3600, edit_creature->getSpawnTime());
-	// count_field->SetSelection(-1, -1);
+	// Creature name (read-only, updates with race ID)
+	subsizer->Add(newd wxStaticText(this, wxID_ANY, "Name"));
+	creature_name_label = newd wxStaticText(this, wxID_ANY, "\"" + wxstr(edit_creature->getName()) + "\"");
+	subsizer->Add(creature_name_label, wxSizerFlags(1).Expand());
+
+	subsizer->Add(newd wxStaticText(this, wxID_ANY, "Spawn time"));
+	count_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_creature->getSpawnTime()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 99999, edit_creature->getSpawnTime());
 	subsizer->Add(count_field, wxSizerFlags(1).Expand());
 
 	subsizer->Add(newd wxStaticText(this, wxID_ANY, "Direction"));
@@ -403,22 +425,65 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 	splash_type_field(nullptr),
 	text_field(nullptr),
 	description_field(nullptr),
+	race_id_field(nullptr),
+	creature_name_label(nullptr),
+	amount_field(nullptr),
+	sec_radius_field(nullptr),
+	visual_radius_label(nullptr),
 	destination_field(nullptr)
 {
 	ASSERT(edit_spawn);
 
+	// Look up creature on this tile for race ID display
+	Creature* tileCreature = edit_tile ? edit_tile->creature : nullptr;
+	int currentRaceId = 0;
+	if(tileCreature) {
+		for(auto& pair : IOMapSec::monsterTypes) {
+			if(pair.second.name == tileCreature->getName()) { currentRaceId = pair.first; break; }
+		}
+	}
+
 	wxSizer* topsizer = newd wxBoxSizer(wxVERTICAL);
 	wxSizer* boxsizer = newd wxStaticBoxSizer(wxVERTICAL, this, "Spawn Properties");
-
-	//if(item->canHoldDescription()) num_items += 1;
 
 	wxFlexGridSizer* subsizer = newd wxFlexGridSizer(2, 10, 10);
 	subsizer->AddGrowableCol(1);
 
-	subsizer->Add(newd wxStaticText(this, wxID_ANY, "Spawn size"));
-	count_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_spawn->getSize()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, g_settings.getInteger(Config::MAX_SPAWN_RADIUS), edit_spawn->getSize());
-	// count_field->SetSelection(-1, -1);
-	subsizer->Add(count_field, wxSizerFlags(1).Expand());
+	bool isSec = edit_spawn->getSecRadius() > 0;
+
+	if(isSec) {
+		// Creature info on the spawn tile
+		if(tileCreature) {
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, "Race ID"));
+			race_id_field = newd wxSpinCtrl(this, RACE_ID_SPIN, i2ws(currentRaceId), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 9999, currentRaceId);
+			subsizer->Add(race_id_field, wxSizerFlags(1).Expand());
+
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, "Name"));
+			creature_name_label = newd wxStaticText(this, wxID_ANY, "\"" + wxstr(tileCreature->getName()) + "\"");
+			subsizer->Add(creature_name_label, wxSizerFlags(1).Expand());
+
+			subsizer->Add(newd wxStaticText(this, wxID_ANY, "Spawn time"));
+			count_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(tileCreature->getSpawnTime()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 99999, tileCreature->getSpawnTime());
+			subsizer->Add(count_field, wxSizerFlags(1).Expand());
+		}
+
+		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Radius"));
+		sec_radius_field = newd wxSpinCtrl(this, SEC_RADIUS_SPIN, i2ws(edit_spawn->getSecRadius()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 9999, edit_spawn->getSecRadius());
+		subsizer->Add(sec_radius_field, wxSizerFlags(1).Expand());
+
+		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Visual radius"));
+		visual_radius_label = newd wxStaticText(this, wxID_ANY, i2ws(edit_spawn->getSize()));
+		subsizer->Add(visual_radius_label);
+
+		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Amount"));
+		amount_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_spawn->getAmount()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 999, edit_spawn->getAmount());
+		subsizer->Add(amount_field, wxSizerFlags(1).Expand());
+	} else {
+		// Non-SEC spawn: just the radius
+		subsizer->Add(newd wxStaticText(this, wxID_ANY, "Spawn size"));
+		count_field = newd wxSpinCtrl(this, wxID_ANY, i2ws(edit_spawn->getSize()), wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, g_settings.getInteger(Config::MAX_SPAWN_RADIUS), edit_spawn->getSize());
+		subsizer->Add(count_field, wxSizerFlags(1).Expand());
+	}
 
 	boxsizer->Add(subsizer, wxSizerFlags(1).Expand());
 
@@ -460,6 +525,24 @@ void OldPropertiesWindow::OnFocusChange(wxFocusEvent& event)
 		spin->SetSelection(-1, -1);
 	else if(wxTextCtrl* text = dynamic_cast<wxTextCtrl*>(win))
 		text->SetSelection(-1, -1);
+}
+
+void OldPropertiesWindow::OnRaceIdChanged(wxSpinEvent& event) {
+	if(!creature_name_label) return;
+	int raceId = event.GetPosition();
+	auto monIt = IOMapSec::monsterTypes.find(raceId);
+	if(monIt != IOMapSec::monsterTypes.end()) {
+		creature_name_label->SetLabel("\"" + wxstr(monIt->second.name) + "\"");
+	} else {
+		creature_name_label->SetLabel("(unknown)");
+	}
+}
+
+void OldPropertiesWindow::OnSecRadiusChanged(wxSpinEvent& event) {
+	if(!visual_radius_label) return;
+	int secRadius = event.GetPosition();
+	int visual = std::max(1, (int)std::sqrt((double)secRadius));
+	visual_radius_label->SetLabel(i2ws(visual));
 }
 
 void OldPropertiesWindow::addItemIdRows(wxSizer* sizer, Item* item) {
@@ -614,6 +697,18 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 		int new_spawntime = count_field->GetValue();
 		edit_creature->setSpawnTime(new_spawntime);
 
+		// Apply race ID change
+		if(race_id_field) {
+			int newRaceId = race_id_field->GetValue();
+			auto monIt = IOMapSec::monsterTypes.find(newRaceId);
+			if(monIt != IOMapSec::monsterTypes.end() && monIt->second.name != edit_creature->getName()) {
+				const std::string& newName = monIt->second.name;
+				CreatureType* type = g_creatures[newName];
+				if(!type) type = g_creatures.addMissingCreatureType(newName, false);
+				edit_creature->setName(newName);
+			}
+		}
+
 		int* new_dir = reinterpret_cast<int*>(direction_field->GetClientData(
 			direction_field->GetSelection()));
 
@@ -621,8 +716,29 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 			edit_creature->setDirection((Direction)*new_dir);
 		}
 	} else if(edit_spawn) {
-		int new_spawnsize = count_field->GetValue();
-		edit_spawn->setSize(new_spawnsize);
+		if(sec_radius_field) {
+			int newSecRadius = sec_radius_field->GetValue();
+			edit_spawn->setSecRadius(newSecRadius);
+			edit_spawn->setSize(std::max(1, (int)std::sqrt((double)newSecRadius)));
+		} else if(count_field) {
+			edit_spawn->setSize(count_field->GetValue());
+		}
+		if(amount_field) edit_spawn->setAmount(amount_field->GetValue());
+		// Save creature changes from the spawn dialog (SEC mode)
+		Creature* tileCreature = edit_tile ? const_cast<Tile*>(edit_tile)->creature : nullptr;
+		if(tileCreature) {
+			if(count_field) tileCreature->setSpawnTime(count_field->GetValue());
+			if(race_id_field) {
+				int newRaceId = race_id_field->GetValue();
+				auto monIt = IOMapSec::monsterTypes.find(newRaceId);
+				if(monIt != IOMapSec::monsterTypes.end()) {
+					const std::string& newName = monIt->second.name;
+					CreatureType* type = g_creatures[newName];
+					if(!type) type = g_creatures.addMissingCreatureType(newName, false);
+					tileCreature->setName(newName);
+				}
+			}
+		}
 	}
 	EndModal(1);
 }

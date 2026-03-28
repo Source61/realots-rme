@@ -34,6 +34,8 @@ public:
 	virtual ~OldPropertiesWindow();
 
 	void OnFocusChange(wxFocusEvent&);
+	void OnRaceIdChanged(wxSpinEvent&);
+	void OnSecRadiusChanged(wxSpinEvent&);
 
 	void OnClickOK(wxCommandEvent&);
 	void OnClickCancel(wxCommandEvent&);
@@ -51,6 +53,11 @@ protected:
 	wxChoice* splash_type_field;
 	wxTextCtrl* text_field;
 	wxTextCtrl* description_field;
+	wxSpinCtrl* race_id_field;
+	wxStaticText* creature_name_label;
+	wxSpinCtrl* amount_field;
+	wxSpinCtrl* sec_radius_field;
+	wxStaticText* visual_radius_label;
 	std::vector<ContainerItemButton*> container_items;
 
 	void addItemIdRows(wxSizer* sizer, Item* item);

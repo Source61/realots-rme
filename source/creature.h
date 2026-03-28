@@ -54,6 +54,7 @@ public:
 	bool isNpc() const;
 
 	std::string getName() const;
+	void setName(const std::string& name) { type_name = name; }
 	CreatureBrush* getBrush() const;
 
 	int getSpawnTime() const noexcept { return spawntime; }
