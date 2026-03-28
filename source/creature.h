@@ -63,6 +63,9 @@ public:
 	Direction getDirection() const noexcept { return direction; }
 	void setDirection(Direction _direction) noexcept { direction = _direction; }
 
+	int getRaceID() const noexcept { return raceId; }
+	void setRaceID(int id) noexcept { raceId = id; }
+
 	// Static conversions
 	static std::string DirID2Name(uint16_t id);
 	static uint16_t DirName2ID(std::string id);
@@ -71,6 +74,7 @@ protected:
 	std::string type_name;
 	Direction direction;
 	int spawntime;
+	int raceId = 0;
 	bool saved;
 	bool selected;
 };

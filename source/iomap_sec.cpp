@@ -769,6 +769,7 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
         if(!type) type = g_creatures.addMissingCreatureType(creatureName, false);
         Creature* creature = newd Creature(type);
         creature->setSpawnTime(entry.regen);
+        creature->setRaceID(entry.raceNumber);
         tile->creature = creature;
         ++placedSpawns;
       }
@@ -960,6 +961,61 @@ bool IOMapSec::saveMap(Map& map, const FileName& identifier) {
 
     FILE* f = fopen(filename, "wb");
     if(f) { fwrite(buf.data(), 1, buf.size(), f); fclose(f); }
+  }
+
+  // Save monster.db — derive root/dat/ from save path
+  fs::path saveDirPath = fs::path(dirPath).parent_path();
+  std::string saveRootDir = saveDirPath.parent_path().string() + "/";
+  std::string saveDatDir = saveRootDir + "dat/";
+  if(fs::is_directory(saveDatDir)) {
+    // Collect all spawn entries from the map
+    struct SaveSpawnEntry {
+      int race, x, y, z, radius, amount, regen;
+      uint16_t sx, sy;
+      uint8_t sz;
+    };
+    std::vector<SaveSpawnEntry> saveEntries;
+
+    MapIterator sit = map.begin();
+    MapIterator send = map.end();
+    while(sit != send) {
+      Tile* tile = (*sit)->get();
+      if(tile && tile->spawn && tile->creature && tile->creature->getRaceID() > 0) {
+        const Position& pos = tile->getPosition();
+        int radius = tile->spawn->getSecRadius() > 0 ? tile->spawn->getSecRadius() : tile->spawn->getSize();
+        int amount = tile->spawn->getAmount();
+        int regen = tile->creature->getSpawnTime();
+        saveEntries.push_back({tile->creature->getRaceID(), pos.x, pos.y, pos.z, radius, amount, regen, (uint16_t)(pos.x / 32), (uint16_t)(pos.y / 32), (uint8_t)pos.z});
+      }
+      ++sit;
+    }
+
+    // Sort by sector
+    std::sort(saveEntries.begin(), saveEntries.end(), [](const SaveSpawnEntry& a, const SaveSpawnEntry& b) {
+      if(a.sx != b.sx) return a.sx < b.sx;
+      if(a.sy != b.sy) return a.sy < b.sy;
+      return a.sz < b.sz;
+    });
+
+    // Write monster.db
+    std::string dbBuf;
+    dbBuf += "# Race     X     Y  Z Radius Amount Regen.\n";
+    uint16_t lastSx = 0xFFFF, lastSy = 0xFFFF;
+    uint8_t lastSz = 0xFF;
+    char line[256];
+    for(auto& e : saveEntries) {
+      if(e.sx != lastSx || e.sy != lastSy || e.sz != lastSz) {
+        snprintf(line, sizeof(line), "\n# ====== %04d,%04d,%02d ====================\n", e.sx, e.sy, e.sz);
+        dbBuf += line;
+        lastSx = e.sx; lastSy = e.sy; lastSz = e.sz;
+      }
+      snprintf(line, sizeof(line), "%5d %5d %5d %2d %5d %6d %4d\n", e.race, e.x, e.y, e.z, e.radius, e.amount, e.regen);
+      dbBuf += line;
+    }
+
+    std::string monsterDbPath = saveDatDir + "monster.db";
+    FILE* dbFile = fopen(monsterDbPath.c_str(), "wb");
+    if(dbFile) { fwrite(dbBuf.data(), 1, dbBuf.size(), dbFile); fclose(dbFile); }
   }
 
   return true;

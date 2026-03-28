@@ -46,6 +46,7 @@ Creature* Creature::deepCopy() const
 	copy->direction = direction;
 	copy->selected = selected;
 	copy->saved = saved;
+	copy->raceId = raceId;
 	return copy;
 }
 

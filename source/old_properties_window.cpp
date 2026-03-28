@@ -365,11 +365,7 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 {
 	ASSERT(edit_creature);
 
-	// Look up race ID for this creature from objects.srv monster data
-	int currentRaceId = 0;
-	for(auto& pair : IOMapSec::monsterTypes) {
-		if(pair.second.name == edit_creature->getName()) { currentRaceId = pair.first; break; }
-	}
+	int currentRaceId = edit_creature->getRaceID();
 
 	wxSizer* topsizer = newd wxBoxSizer(wxVERTICAL);
 	wxSizer* boxsizer = newd wxStaticBoxSizer(wxVERTICAL, this, "Creature Properties");
@@ -434,14 +430,9 @@ OldPropertiesWindow::OldPropertiesWindow(wxWindow* win_parent, const Map* map, c
 {
 	ASSERT(edit_spawn);
 
-	// Look up creature on this tile for race ID display
+	// Get creature on this tile for race ID display
 	Creature* tileCreature = edit_tile ? edit_tile->creature : nullptr;
-	int currentRaceId = 0;
-	if(tileCreature) {
-		for(auto& pair : IOMapSec::monsterTypes) {
-			if(pair.second.name == tileCreature->getName()) { currentRaceId = pair.first; break; }
-		}
-	}
+	int currentRaceId = tileCreature ? tileCreature->getRaceID() : 0;
 
 	wxSizer* topsizer = newd wxBoxSizer(wxVERTICAL);
 	wxSizer* boxsizer = newd wxStaticBoxSizer(wxVERTICAL, this, "Spawn Properties");
@@ -701,11 +692,12 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 		if(race_id_field) {
 			int newRaceId = race_id_field->GetValue();
 			auto monIt = IOMapSec::monsterTypes.find(newRaceId);
-			if(monIt != IOMapSec::monsterTypes.end() && monIt->second.name != edit_creature->getName()) {
+			if(monIt != IOMapSec::monsterTypes.end()) {
 				const std::string& newName = monIt->second.name;
 				CreatureType* type = g_creatures[newName];
 				if(!type) type = g_creatures.addMissingCreatureType(newName, false);
 				edit_creature->setName(newName);
+				edit_creature->setRaceID(newRaceId);
 			}
 		}
 
@@ -736,6 +728,7 @@ void OldPropertiesWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 					CreatureType* type = g_creatures[newName];
 					if(!type) type = g_creatures.addMissingCreatureType(newName, false);
 					tileCreature->setName(newName);
+					tileCreature->setRaceID(newRaceId);
 				}
 			}
 		}
