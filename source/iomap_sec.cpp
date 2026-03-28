@@ -894,12 +894,10 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
     if(fs::exists(monsterDbPath)) loadMonsterDb(monsterDbPath);
   }
 
-  // Load house data from root/dat/
+  // Load house areas metadata (needed before houses)
   if(!datDir.empty()) {
     std::string houseAreasPath = datDir + "houseareas.dat";
     if(fs::exists(houseAreasPath)) loadHouseAreas(houseAreasPath);
-    std::string housesPath = datDir + "houses.dat";
-    if(fs::exists(housesPath)) loadHouses(map, housesPath);
   }
 
   g_gui.SetLoadDone(0, "Loading sector files...");
@@ -911,6 +909,12 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
     }
     ++loaded;
     g_gui.SetLoadDone((int)(100 * loaded / fileCount));
+  }
+
+  // Load houses after sector files (so tiles exist)
+  if(!datDir.empty()) {
+    std::string housesPath = datDir + "houses.dat";
+    if(fs::exists(housesPath)) loadHouses(map, housesPath);
   }
 
   // Place monster spawns on the map from monster.db

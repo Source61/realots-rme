@@ -30,6 +30,7 @@
 #include "old_properties_window.h"
 #include "properties_window.h"
 #include "palette_window.h"
+#include "palette_house.h"
 #include "map_display.h"
 #include "map_drawer.h"
 #include "application.h"
@@ -96,6 +97,7 @@ BEGIN_EVENT_TABLE(MapCanvas, wxGLCanvas)
 	EVT_MENU(MAP_POPUP_MENU_SELECT_CREATURE_BRUSH, MapCanvas::OnSelectCreatureBrush)
 	EVT_MENU(MAP_POPUP_MENU_SELECT_SPAWN_BRUSH, MapCanvas::OnSelectSpawnBrush)
 	EVT_MENU(MAP_POPUP_MENU_SELECT_HOUSE_BRUSH, MapCanvas::OnSelectHouseBrush)
+	EVT_MENU(MAP_POPUP_MENU_EDIT_HOUSE, MapCanvas::OnEditHouse)
 	// ----
 	EVT_MENU(MAP_POPUP_MENU_PROPERTIES, MapCanvas::OnProperties)
 	// ----
@@ -2130,6 +2132,17 @@ void MapCanvas::OnSelectHouseBrush(wxCommandEvent& WXUNUSED(event))
 	}
 }
 
+void MapCanvas::OnEditHouse(wxCommandEvent& WXUNUSED(event))
+{
+	Tile* tile = editor.getSelection().getSelectedTile();
+	if(!tile) return;
+	if(!tile->isHouseTile()) return;
+	House* house = editor.getMap().houses.getHouse(tile->getHouseID());
+	if(!house) return;
+	EditHouseDialog dialog(g_gui.root, &editor.getMap(), house);
+	dialog.ShowModal();
+}
+
 void MapCanvas::OnSelectCreatureBrush(wxCommandEvent& WXUNUSED(event))
 {
 	Tile* tile = editor.getSelection().getSelectedTile();
@@ -2404,8 +2417,10 @@ void MapPopupMenu::Update()
 				if(tile->hasGround() && tile->getGroundBrush() && tile->getGroundBrush()->visibleInPalette())
 					Append( MAP_POPUP_MENU_SELECT_GROUND_BRUSH, "Select Groundbrush", "Uses the current item as a groundbrush");
 
-				if(tile->isHouseTile())
+				if(tile->isHouseTile()) {
 					Append(MAP_POPUP_MENU_SELECT_HOUSE_BRUSH, "Select House", "Draw with the house on this tile.");
+					Append(MAP_POPUP_MENU_EDIT_HOUSE, "Edit House", "Edit the house on this tile.");
+				}
 
 				AppendSeparator();
 				Append( MAP_POPUP_MENU_PROPERTIES, "&Properties", "Properties for the current object");

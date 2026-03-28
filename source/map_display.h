@@ -89,6 +89,7 @@ public:
 	void OnSelectCreatureBrush(wxCommandEvent& event);
 	void OnSelectSpawnBrush(wxCommandEvent& event);
 	void OnSelectHouseBrush(wxCommandEvent& event);
+	void OnEditHouse(wxCommandEvent& event);
 	// ---
 	void OnProperties(wxCommandEvent& event);
 
