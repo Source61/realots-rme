@@ -31,8 +31,8 @@
 
 namespace fs = std::filesystem;
 
-bool IOMapSec::disguisesLoaded = false;
-std::map<uint16_t, uint16_t> IOMapSec::disguiseMap;
+bool IOMapSec::objectInfoLoaded = false;
+std::map<uint16_t, IOMapSec::SecObjectInfo> IOMapSec::objectInfo;
 
 // Case-insensitive string comparison
 static bool iequals(const std::string& a, const std::string& b) {
@@ -208,10 +208,10 @@ Item* IOMapSec::createItemFromParsed(const ParsedItem& parsed) {
   uint16_t clientId = parsed.id;
   uint16_t lookupId = clientId;
 
-  // If this is a disguise item, use the disguise target's clientID for OTB lookup
-  auto disguiseIt = disguiseMap.find(clientId);
-  if(disguiseIt != disguiseMap.end()) {
-    lookupId = disguiseIt->second;
+  // Use objects.srv for disguise resolution instead of separate disguiseMap
+  auto infoIt = objectInfo.find(clientId);
+  if(infoIt != objectInfo.end() && infoIt->second.isDisguise) {
+    lookupId = infoIt->second.disguiseTarget;
   }
 
   // Find OTB server ID from client ID
@@ -221,11 +221,18 @@ Item* IOMapSec::createItemFromParsed(const ParsedItem& parsed) {
     serverId = it->second;
   }
 
-  // If SEC data has Content children, ensure we create a Container even if
-  // OTB doesn't mark this item as one (e.g. quest chests, item shelves)
+  // Use objects.srv flags to decide item subclass instead of OTB
+  bool srvContainer = (infoIt != objectInfo.end()) ? infoIt->second.isContainer : g_items.getItemType(serverId).isContainer();
+  bool srvDoor = (infoIt != objectInfo.end()) ? infoIt->second.isDoor : g_items.getItemType(serverId).isDoor();
+  bool srvTeleport = (infoIt != objectInfo.end()) ? infoIt->second.isTeleport : g_items.getItemType(serverId).isTeleport();
+
   Item* item;
-  if(!parsed.children.empty() && !g_items.getItemType(serverId).isContainer()) {
+  if(srvContainer || !parsed.children.empty()) {
     item = new Container(serverId);
+  } else if(srvDoor) {
+    item = new Door(serverId);
+  } else if(srvTeleport) {
+    item = new Teleport(serverId);
   } else {
     item = Item::Create(serverId);
   }
@@ -258,10 +265,11 @@ Item* IOMapSec::createItemFromParsed(const ParsedItem& parsed) {
   // ChestQuestNumber — store as custom attribute
   if(parsed.chestQuestNumber >= 0) item->setAttribute("chestquestnumber", parsed.chestQuestNumber);
 
-  // Door attributes
-  Door* door = item->getDoor();
-  if(door) {
-    if(parsed.doorLevel >= 0) door->setDoorID(parsed.doorLevel);
+  // Door attributes — store as int32_t attribute to avoid uint8_t truncation
+  if(parsed.doorLevel >= 0) {
+    Door* door = item->getDoor();
+    if(door) door->setDoorID(parsed.doorLevel);
+    if(parsed.doorLevel > 255) item->setAttribute("sec_doorlevel", parsed.doorLevel);
   }
   if(parsed.doorQuestNumber >= 0) item->setAttribute("doorquestnumber", parsed.doorQuestNumber);
   if(parsed.doorQuestValue >= 0) item->setAttribute("doorquestvalue", parsed.doorQuestValue);
@@ -390,7 +398,10 @@ bool IOMapSec::loadSectorFile(Map& map, const std::string& filepath, int sector_
     for(const auto& parsed : items) {
       Item* item = createItemFromParsed(parsed);
       if(!item) continue;
-      if(item->isGroundTile()) { delete tile->ground; tile->ground = item; }
+      // Use objects.srv Bank flag to identify ground, not OTB's isGroundTile()
+      auto infoIt = objectInfo.find(parsed.id);
+      bool isBank = (infoIt != objectInfo.end()) ? infoIt->second.isBank : item->isGroundTile();
+      if(isBank) { delete tile->ground; tile->ground = item; }
       else { tile->items.push_back(item); }
     }
 
@@ -401,19 +412,36 @@ bool IOMapSec::loadSectorFile(Map& map, const std::string& filepath, int sector_
   return true;
 }
 
-void IOMapSec::loadDisguises(const std::string& dataDir) {
-  if(disguisesLoaded) return;
-  disguisesLoaded = true;
+// Check if a comma-separated flag list contains a specific flag (case-insensitive)
+static bool hasFlag(const std::string& flagStr, const char* flag) {
+  std::string lower;
+  lower.reserve(flagStr.size());
+  for(char c : flagStr) lower += std::tolower((unsigned char)c);
+  std::string lowerFlag;
+  for(const char* p = flag; *p; ++p) lowerFlag += std::tolower((unsigned char)*p);
+  size_t pos = lower.find(lowerFlag);
+  if(pos == std::string::npos) return false;
+  // Ensure it's a whole word (not a substring of another flag)
+  if(pos > 0 && std::isalpha((unsigned char)lower[pos - 1])) return false;
+  size_t end = pos + lowerFlag.size();
+  if(end < lower.size() && std::isalpha((unsigned char)lower[end])) return false;
+  return true;
+}
+
+void IOMapSec::loadObjectsSrv(const std::string& dataDir) {
+  if(objectInfoLoaded) return;
+  objectInfoLoaded = true;
 
   std::string filepath = dataDir + "objects.srv";
   std::ifstream file(filepath);
   if(!file.is_open()) return;
 
-  // Parse objects.srv for disguise entries
-  // Format: TypeID=N, Flags={..., Disguise, ...}, Attributes={..., DisguiseTarget=N, ...}
   int currentTypeID = -1;
-  bool hasDisguise = false;
-  int disguiseTarget = -1;
+  SecObjectInfo currentInfo;
+
+  auto commitEntry = [&]() {
+    if(currentTypeID >= 0) objectInfo[(uint16_t)currentTypeID] = currentInfo;
+  };
 
   std::string line;
   while(std::getline(file, line)) {
@@ -430,32 +458,27 @@ void IOMapSec::loadDisguises(const std::string& dataDir) {
     std::string value = line.substr(eqPos + 1);
 
     if(key == "TypeID") {
-      // Save previous entry
-      if(currentTypeID >= 0 && hasDisguise && disguiseTarget >= 0) {
-        disguiseMap[(uint16_t)currentTypeID] = (uint16_t)disguiseTarget;
-      }
+      commitEntry();
       currentTypeID = std::atoi(value.c_str());
-      hasDisguise = false;
-      disguiseTarget = -1;
+      currentInfo = SecObjectInfo{};
     } else if(key == "Flags") {
-      std::string lower;
-      for(char c : value) lower += std::tolower((unsigned char)c);
-      if(lower.find("disguise") != std::string::npos) {
-        hasDisguise = true;
-      }
+      if(hasFlag(value, "Bank")) currentInfo.isBank = true;
+      if(hasFlag(value, "Bottom")) currentInfo.isBottom = true;
+      if(hasFlag(value, "Top")) currentInfo.isTop = true;
+      if(hasFlag(value, "Container") || hasFlag(value, "Chest")) currentInfo.isContainer = true;
+      if(hasFlag(value, "KeyDoor") || hasFlag(value, "NameDoor") || hasFlag(value, "LevelDoor") || hasFlag(value, "QuestDoor")) currentInfo.isDoor = true;
+      if(hasFlag(value, "TeleportAbsolute") || hasFlag(value, "TeleportRelative")) currentInfo.isTeleport = true;
+      if(hasFlag(value, "Disguise")) currentInfo.isDisguise = true;
     } else if(key == "Attributes") {
-      std::string lower;
-      for(char c : value) lower += std::tolower((unsigned char)c);
-      size_t pos = lower.find("disguisetarget=");
-      if(pos != std::string::npos) {
-        disguiseTarget = std::atoi(value.c_str() + pos + 15);
+      if(currentInfo.isDisguise) {
+        std::string lower;
+        for(char c : value) lower += std::tolower((unsigned char)c);
+        size_t pos = lower.find("disguisetarget=");
+        if(pos != std::string::npos) currentInfo.disguiseTarget = (uint16_t)std::atoi(value.c_str() + pos + 15);
       }
     }
   }
-  // Last entry
-  if(currentTypeID >= 0 && hasDisguise && disguiseTarget >= 0) {
-    disguiseMap[(uint16_t)currentTypeID] = (uint16_t)disguiseTarget;
-  }
+  commitEntry();
 }
 
 bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
@@ -515,14 +538,14 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
     }
   }
 
-  // Load disguise info from objects.srv to fix rendering of disguised items
+  // Load objects.srv for item type info (flags, disguises)
   // Try common relative paths from the .sec directory
   std::string datDir;
   for(const auto& rel : {"../dat/", "../data/dat/", "dat/", "../"}) {
     std::string candidate = dirPath + rel;
     if(fs::exists(candidate + "objects.srv")) { datDir = candidate; break; }
   }
-  if(!datDir.empty()) loadDisguises(datDir);
+  if(!datDir.empty()) loadObjectsSrv(datDir);
 
   g_gui.SetLoadDone(0, "Loading sector files...");
 
@@ -576,8 +599,10 @@ void IOMapSec::writeItemAttributes(std::string& buf, Item* item) {
   const int32_t* chestQuest = item->getIntegerAttribute("chestquestnumber");
   if(chestQuest && *chestQuest > 0) { buf += " ChestQuestNumber="; appendInt(buf, *chestQuest); }
 
+  const int32_t* secDoorLevel = item->getIntegerAttribute("sec_doorlevel");
   Door* door = item->getDoor();
-  if(door && door->getDoorID() > 0) { buf += " Level="; appendInt(buf, door->getDoorID()); }
+  if(secDoorLevel && *secDoorLevel > 0) { buf += " Level="; appendInt(buf, *secDoorLevel); }
+  else if(door && door->getDoorID() > 0) { buf += " Level="; appendInt(buf, door->getDoorID()); }
   const int32_t* doorQuest = item->getIntegerAttribute("doorquestnumber");
   if(doorQuest && *doorQuest > 0) { buf += " DoorQuestNumber="; appendInt(buf, *doorQuest); }
   const int32_t* doorQuestVal = item->getIntegerAttribute("doorquestvalue");

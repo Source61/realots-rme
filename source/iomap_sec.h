@@ -88,10 +88,20 @@ private:
   std::string readIdentifier(const std::string& line, size_t& pos);
   void skipWhitespace(const std::string& line, size_t& pos);
 
-  // objects.srv: clientID -> disguiseTargetClientID for items that render as another item
-  static void loadDisguises(const std::string& dataDir);
-  static bool disguisesLoaded;
-  static std::map<uint16_t, uint16_t> disguiseMap;
+  // objects.srv item type info (replaces OTB for SEC type decisions)
+  struct SecObjectInfo {
+    bool isBank = false;       // ground tile
+    bool isBottom = false;     // always on bottom
+    bool isTop = false;        // always on top
+    bool isContainer = false;  // Container or Chest flag
+    bool isDoor = false;       // KeyDoor, NameDoor, LevelDoor, or QuestDoor
+    bool isTeleport = false;   // TeleportAbsolute or TeleportRelative
+    bool isDisguise = false;
+    uint16_t disguiseTarget = 0;
+  };
+  static void loadObjectsSrv(const std::string& dataDir);
+  static bool objectInfoLoaded;
+  static std::map<uint16_t, SecObjectInfo> objectInfo;
 };
 
 #endif // RME_IOMAP_SEC_H_
