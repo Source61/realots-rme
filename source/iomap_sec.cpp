@@ -383,7 +383,8 @@ bool IOMapSec::loadSectorFile(Map& map, const std::string& filepath, int sector_
     for(const auto& parsed : items) {
       Item* item = createItemFromParsed(parsed);
       if(!item) continue;
-      tile->addItem(item);
+      if(item->isGroundTile()) { delete tile->ground; tile->ground = item; }
+      else { tile->items.push_back(item); }
     }
 
     tile->update();
