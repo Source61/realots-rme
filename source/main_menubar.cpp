@@ -52,6 +52,7 @@ MainMenuBar::MainMenuBar(MainFrame *frame) : frame(frame)
 
 	MAKE_ACTION(NEW, wxITEM_NORMAL, OnNew);
 	MAKE_ACTION(OPEN, wxITEM_NORMAL, OnOpen);
+	MAKE_ACTION(OPEN_SEC, wxITEM_NORMAL, OnOpenSEC);
 	MAKE_ACTION(SAVE, wxITEM_NORMAL, OnSave);
 	MAKE_ACTION(SAVE_AS, wxITEM_NORMAL, OnSaveAs);
 	MAKE_ACTION(GENERATE_MAP, wxITEM_NORMAL, OnGenerateMap);
@@ -743,6 +744,11 @@ void MainMenuBar::OnOpenRecent(wxCommandEvent& event)
 void MainMenuBar::OnOpen(wxCommandEvent& WXUNUSED(event))
 {
 	g_gui.OpenMap();
+}
+
+void MainMenuBar::OnOpenSEC(wxCommandEvent& WXUNUSED(event))
+{
+	g_gui.OpenSECMap();
 }
 
 void MainMenuBar::OnClose(wxCommandEvent& WXUNUSED(event))

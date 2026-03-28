@@ -28,6 +28,7 @@ namespace MenuBar
 	enum ActionID {
 		NEW,
 		OPEN,
+		OPEN_SEC,
 		SAVE,
 		SAVE_AS,
 		GENERATE_MAP,
@@ -187,6 +188,7 @@ public:
 	// File Menu
 	void OnNew(wxCommandEvent& event);
 	void OnOpen(wxCommandEvent& event);
+	void OnOpenSEC(wxCommandEvent& event);
 	void OnGenerateMap(wxCommandEvent& event);
 	void OnOpenRecent(wxCommandEvent& event);
 	void OnSave(wxCommandEvent& event);

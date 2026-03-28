@@ -18,6 +18,7 @@
 #include "main.h"
 
 #include <wx/display.h>
+#include <filesystem>
 
 #include "gui.h"
 #include "main_menubar.h"
@@ -551,14 +552,48 @@ void GUI::OpenMap()
 {
 	wxString wildcard;
 	if(g_settings.getInteger(Config::USE_OTGZ) != 0) {
-		wildcard = "Map Files (*.otbm;*.otgz;*.sec)|*.otbm;*.otgz;*.sec|OpenTibia Binary Map (*.otbm;*.otgz)|*.otbm;*.otgz|Sector Files (*.sec)|*.sec";
+		wildcard = "OpenTibia Binary Map (*.otbm;*.otgz)|*.otbm;*.otgz";
 	} else {
-		wildcard = "Map Files (*.otbm;*.sec)|*.otbm;*.sec|OpenTibia Binary Map (*.otbm)|*.otbm|Sector Files (*.sec)|*.sec";
+		wildcard = "OpenTibia Binary Map (*.otbm)|*.otbm";
 	}
 	wxFileDialog dialog(root, "Open map file", wxEmptyString, wxEmptyString, wildcard, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
 
 	if(dialog.ShowModal() == wxID_OK)
 		LoadMap(dialog.GetPath());
+}
+
+void GUI::OpenSECMap()
+{
+	wxDirDialog dialog(root, "Select SEC map root directory", wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+	if(dialog.ShowModal() == wxID_OK) {
+		std::string rootDir = nstr(dialog.GetPath());
+		if(!rootDir.empty() && rootDir.back() != '/' && rootDir.back() != '\\') rootDir += '/';
+		LoadSECMap(rootDir);
+	}
+}
+
+bool GUI::LoadSECMap(const std::string& rootDir)
+{
+	std::string mapDir = rootDir + "map/";
+	// Find a .sec file to use as the open target (the SEC loader scans the whole directory)
+	std::string secFile;
+	try {
+		for(const auto& entry : std::filesystem::directory_iterator(mapDir)) {
+			if(!entry.is_regular_file()) continue;
+			std::string fname = entry.path().filename().string();
+			if(fname.size() > 4 && fname.substr(fname.size() - 4) == ".sec") { secFile = entry.path().string(); break; }
+		}
+	} catch(...) {}
+
+	if(secFile.empty()) {
+		PopupDialog(root, "Error", "No .sec files found in " + wxstr(mapDir), wxOK);
+		return false;
+	}
+
+	// Store root dir for IOMapSec to use
+	g_settings.setString(Config::RECENT_EDITED_MAP_PATH, rootDir);
+
+	return LoadMap(wxstr(secFile));
 }
 
 void GUI::SaveMap()

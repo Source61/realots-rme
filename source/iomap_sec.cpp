@@ -615,7 +615,23 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
     return false;
   }
 
-  // Scan directory for .sec files
+  // Derive root directory: the .sec file is in root/map/
+  // Root is the parent of the directory containing the .sec file
+  fs::path mapDirPath = fs::path(dirPath).parent_path();
+  std::string rootDir = mapDirPath.parent_path().string() + "/";
+  std::string mapDir = rootDir + "map/";
+  std::string datDir = rootDir + "dat/";
+  std::string monDir = rootDir + "mon/";
+
+  // If root/map/ doesn't exist, fall back to using dirPath directly as the map dir
+  if(!fs::is_directory(mapDir)) {
+    mapDir = dirPath;
+    rootDir = dirPath;
+    datDir = "";
+    monDir = "";
+  }
+
+  // Scan map directory for .sec files
   int fileCount = 0;
   int maxSectorX = 0, maxSectorY = 0;
 
@@ -626,7 +642,7 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   std::vector<SectorInfo> sectors;
 
   try {
-    for(const auto& entry : fs::directory_iterator(dirPath)) {
+    for(const auto& entry : fs::directory_iterator(mapDir)) {
       if(!entry.is_regular_file()) continue;
       std::string fname = entry.path().filename().string();
       int sx, sy, sz;
@@ -643,7 +659,7 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   }
 
   if(fileCount == 0) {
-    error("No .sec files found in directory: %s", dirPath.c_str());
+    error("No .sec files found in directory: %s", mapDir.c_str());
     return false;
   }
 
@@ -652,8 +668,6 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   map.height = (maxSectorY + 1) * 32;
 
   // Build clientID -> serverID reverse map for .sec TypeID translation
-  // .sec files use CipSoft's raw TypeIDs which are client/sprite IDs,
-  // but RME's Item::Create() expects OTB server IDs.
   if(g_items.clientToServer.empty()) {
     for(uint16_t sid = g_items.getMinID(); sid <= g_items.getMaxID(); ++sid) {
       const ItemType& t = g_items.getItemType(sid);
@@ -663,17 +677,10 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
     }
   }
 
-  // Load objects.srv for item type info (flags, disguises)
-  // Try common relative paths from the .sec directory
-  std::string datDir;
-  for(const auto& rel : {"../dat/", "../data/dat/", "dat/", "../"}) {
-    std::string candidate = dirPath + rel;
-    if(fs::exists(candidate + "objects.srv")) { datDir = candidate; break; }
-  }
-  if(!datDir.empty()) {
+  // Load objects.srv from root/dat/
+  if(!datDir.empty() && fs::exists(datDir + "objects.srv")) {
     loadObjectsSrv(datDir);
     g_materials.createOtherTileset();
-    // Add the Disguise page to all RAW palettes
     Tileset* dt = g_materials.tilesets["Disguise"];
     if(dt) {
       const TilesetCategory* dtc = dt->getCategory(TILESET_RAW);
@@ -683,14 +690,8 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
       }
     }
   }
-
-  // Load monster types from .mon files
-  std::string monDir;
-  for(const auto& rel : {"../mon/", "../data/mon/", "mon/", "../"}) {
-    std::string candidate = dirPath + rel;
-    if(fs::is_directory(candidate)) { monDir = candidate; break; }
-  }
-  if(!monDir.empty()) {
+  // Load monster types from root/mon/
+  if(!monDir.empty() && fs::is_directory(monDir)) {
     loadMonsterTypes(monDir);
     // Register monsters in the creature database
     for(auto& pair : monsterTypes) {

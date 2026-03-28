@@ -330,6 +330,8 @@ public:
 	void SaveCurrentMap(bool showdialog = true) { SaveCurrentMap(wxString(""), showdialog); }
 	bool NewMap();
 	void OpenMap();
+	void OpenSECMap();
+	bool LoadSECMap(const std::string& rootDir);
 	void SaveMap();
 	void SaveMapAs();
 	bool LoadMap(const FileName& fileName);
