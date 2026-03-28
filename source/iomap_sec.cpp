@@ -26,6 +26,8 @@
 #include "materials.h"
 #include "palette_window.h"
 #include "creatures.h"
+#include "creature.h"
+#include "spawn.h"
 
 #include <fstream>
 #include <filesystem>
@@ -728,6 +730,43 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
     }
     ++loaded;
     g_gui.SetLoadDone((int)(100 * loaded / fileCount));
+  }
+
+  // Place monster spawns on the map from monster.db
+  if(!spawnEntries.empty()) {
+    int placedSpawns = 0;
+    for(const auto& entry : spawnEntries) {
+      // Look up creature name from race number
+      auto monIt = monsterTypes.find(entry.raceNumber);
+      if(monIt == monsterTypes.end()) continue;
+      const std::string& creatureName = monIt->second.name;
+
+      Position pos(entry.x, entry.y, entry.z);
+
+      // Get or create tile at spawn position
+      Tile* tile = map.getTile(pos);
+      if(!tile) {
+        tile = map.allocator(map.createTileL(pos));
+        map.setTile(pos, tile);
+      }
+
+      // Create spawn on tile if none exists
+      if(!tile->spawn) {
+        Spawn* spawn = newd Spawn(entry.radius);
+        tile->spawn = spawn;
+        map.addSpawn(tile);
+      }
+
+      // Place creature if tile doesn't already have one
+      if(!tile->creature) {
+        CreatureType* type = g_creatures[creatureName];
+        if(!type) type = g_creatures.addMissingCreatureType(creatureName, false);
+        Creature* creature = newd Creature(type);
+        creature->setSpawnTime(entry.regen);
+        tile->creature = creature;
+        ++placedSpawns;
+      }
+    }
   }
 
   return true;
