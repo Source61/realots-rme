@@ -28,6 +28,7 @@
 #include "creatures.h"
 #include "creature.h"
 #include "spawn.h"
+#include "house.h"
 
 #include <fstream>
 #include <filesystem>
@@ -39,6 +40,7 @@ namespace fs = std::filesystem;
 
 bool IOMapSec::objectInfoLoaded = false;
 std::map<uint16_t, IOMapSec::SecObjectInfo> IOMapSec::objectInfo;
+std::map<int, IOMapSec::SecHouseArea> IOMapSec::houseAreas;
 bool IOMapSec::monsterTypesLoaded = false;
 std::map<int, IOMapSec::SecMonsterType> IOMapSec::monsterTypes;
 std::vector<IOMapSec::SecSpawnEntry> IOMapSec::spawnEntries;
@@ -609,6 +611,176 @@ void IOMapSec::loadMonsterDb(const std::string& filepath) {
   }
 }
 
+void IOMapSec::loadHouseAreas(const std::string& filepath) {
+  houseAreas.clear();
+  std::ifstream file(filepath);
+  if(!file.is_open()) return;
+
+  std::string line;
+  while(std::getline(file, line)) {
+    if(line.empty() || line[0] == '#') continue;
+    // Format: Area = (areaId,"areaName",sqmPrice,depotNr)
+    size_t paren = line.find('(');
+    if(paren == std::string::npos) continue;
+    SecHouseArea area;
+    area.areaId = std::atoi(line.c_str() + paren + 1);
+    size_t q1 = line.find('"', paren);
+    size_t q2 = line.find('"', q1 + 1);
+    if(q1 != std::string::npos && q2 != std::string::npos) area.name = line.substr(q1 + 1, q2 - q1 - 1);
+    size_t comma2 = line.find(',', q2 + 1);
+    if(comma2 != std::string::npos) area.sqmPrice = std::atoi(line.c_str() + comma2 + 1);
+    size_t comma3 = line.find(',', comma2 + 1);
+    if(comma3 != std::string::npos) area.depotNr = std::atoi(line.c_str() + comma3 + 1);
+    if(area.areaId > 0) houseAreas[area.areaId] = area;
+  }
+}
+
+void IOMapSec::loadHouses(Map& map, const std::string& filepath) {
+  std::ifstream file(filepath);
+  if(!file.is_open()) return;
+
+  std::string fullContent((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+  // Split by "ID = " to get each house block
+  size_t pos = 0;
+  while(pos < fullContent.size()) {
+    // Find next "ID = "
+    size_t idPos = fullContent.find("ID = ", pos);
+    if(idPos == std::string::npos) break;
+
+    uint32_t houseId = (uint32_t)std::atoi(fullContent.c_str() + idPos + 5);
+    if(houseId == 0) { pos = idPos + 5; continue; }
+
+    // Find the extent of this house entry (until next "ID = " or EOF)
+    size_t nextId = fullContent.find("\nID = ", idPos + 1);
+    if(nextId == std::string::npos) nextId = fullContent.find("\r\nID = ", idPos + 1);
+    std::string block = (nextId != std::string::npos) ? fullContent.substr(idPos, nextId - idPos) : fullContent.substr(idPos);
+    pos = (nextId != std::string::npos) ? nextId + 1 : fullContent.size();
+
+    House* house = newd House(map);
+    house->id = houseId;
+
+    // Parse Name
+    size_t namePos = block.find("Name = ");
+    if(namePos != std::string::npos) {
+      size_t q1 = block.find('"', namePos);
+      size_t q2 = block.find('"', q1 + 1);
+      if(q1 != std::string::npos && q2 != std::string::npos) house->name = block.substr(q1 + 1, q2 - q1 - 1);
+    }
+
+    // Parse Description
+    size_t descPos = block.find("Description = ");
+    if(descPos != std::string::npos) {
+      size_t q1 = block.find('"', descPos);
+      size_t q2 = block.find('"', q1 + 1);
+      if(q1 != std::string::npos && q2 != std::string::npos) house->description = block.substr(q1 + 1, q2 - q1 - 1);
+    }
+
+    // Parse RentOffset
+    size_t rentPos = block.find("RentOffset = ");
+    if(rentPos != std::string::npos) house->rentOffset = std::atoi(block.c_str() + rentPos + 13);
+
+    // Parse Area
+    size_t areaPos = block.find("Area = ");
+    if(areaPos != std::string::npos) {
+      // Make sure this isn't "HouseArea" or similar — check it's at line start or after newline
+      house->areaId = std::atoi(block.c_str() + areaPos + 7);
+      // Map area to town ID
+      house->townid = house->areaId;
+    }
+
+    // Parse GuildHouse
+    size_t ghPos = block.find("GuildHouse = ");
+    if(ghPos != std::string::npos) {
+      std::string ghVal = block.substr(ghPos + 13, 4);
+      for(char& c : ghVal) c = std::tolower((unsigned char)c);
+      house->guildhall = (ghVal.find("true") == 0);
+    }
+
+    // Parse Exit = [x,y,z]
+    size_t exitPos = block.find("Exit = ");
+    if(exitPos != std::string::npos) {
+      size_t br1 = block.find('[', exitPos);
+      if(br1 != std::string::npos) {
+        int ex, ey, ez;
+        if(sscanf(block.c_str() + br1, "[%d,%d,%d]", &ex, &ey, &ez) == 3) house->setExit(Position(ex, ey, ez));
+      }
+    }
+
+    // Parse Center = [x,y,z]
+    size_t centerPos = block.find("Center = ");
+    if(centerPos != std::string::npos) {
+      size_t br1 = block.find('[', centerPos);
+      if(br1 != std::string::npos) {
+        int cx, cy, cz;
+        if(sscanf(block.c_str() + br1, "[%d,%d,%d]", &cx, &cy, &cz) == 3) house->setCenter(Position(cx, cy, cz));
+      }
+    }
+
+    // Parse Fields = {[x,y,z],[x,y,z],...}
+    size_t fieldsPos = block.find("Fields = ");
+    if(fieldsPos != std::string::npos) {
+      size_t fpos = block.find('{', fieldsPos);
+      while(fpos < block.size()) {
+        size_t br = block.find('[', fpos);
+        if(br == std::string::npos) break;
+        size_t brEnd = block.find(']', br);
+        if(brEnd == std::string::npos) break;
+        int fx, fy, fz;
+        if(sscanf(block.c_str() + br, "[%d,%d,%d]", &fx, &fy, &fz) == 3) {
+          Position fieldPos(fx, fy, fz);
+          Tile* tile = map.getTile(fieldPos);
+          if(!tile) {
+            tile = map.allocator(map.createTileL(fieldPos));
+            map.setTile(fieldPos, tile);
+          }
+          tile->setHouse(house);
+          house->addTile(tile);
+        }
+        fpos = brEnd + 1;
+        if(fpos < block.size() && block[fpos] == '}') break;
+      }
+    }
+
+    // Calculate rent from area
+    auto areaIt = houseAreas.find(house->areaId);
+    if(areaIt != houseAreas.end()) {
+      house->rent = areaIt->second.sqmPrice * (int)house->size() + house->rentOffset;
+    } else {
+      house->rent = house->rentOffset;
+    }
+
+    map.houses.addHouse(house);
+  }
+}
+
+void IOMapSec::saveHouses(Map& map, const std::string& filepath) {
+  std::string buf;
+  for(auto it = map.houses.begin(); it != map.houses.end(); ++it) {
+    House* house = it->second;
+    if(!buf.empty()) buf += "\r\n";
+    buf += "ID = "; char tmp[32]; snprintf(tmp, sizeof(tmp), "%u", house->id); buf += tmp;
+    buf += "\r\nName = \""; buf += house->name; buf += "\"";
+    buf += "\r\nDescription = \""; buf += house->description; buf += "\"";
+    buf += "\r\nRentOffset = "; snprintf(tmp, sizeof(tmp), "%d", house->rentOffset); buf += tmp;
+    buf += "\r\nArea = "; snprintf(tmp, sizeof(tmp), "%d", house->areaId); buf += tmp;
+    buf += "\r\nGuildHouse = "; buf += house->guildhall ? "true" : "false";
+    buf += "\r\nExit = ["; snprintf(tmp, sizeof(tmp), "%d,%d,%d", house->getExit().x, house->getExit().y, house->getExit().z); buf += tmp; buf += "]";
+    buf += "\r\nCenter = ["; snprintf(tmp, sizeof(tmp), "%d,%d,%d", house->getCenter().x, house->getCenter().y, house->getCenter().z); buf += tmp; buf += "]";
+    buf += "\r\nFields = {";
+    bool firstField = true;
+    for(const Position& fieldPos : house->getTiles()) {
+      if(!firstField) buf += ",";
+      snprintf(tmp, sizeof(tmp), "[%d,%d,%d]", fieldPos.x, fieldPos.y, fieldPos.z);
+      buf += tmp;
+      firstField = false;
+    }
+    buf += "}\r\n";
+  }
+  FILE* f = fopen(filepath.c_str(), "wb");
+  if(f) { fwrite(buf.data(), 1, buf.size(), f); fclose(f); }
+}
+
 bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   wxFileName fn(identifier);
   std::string dirPath = nstr(fn.GetPath(wxPATH_GET_SEPARATOR | wxPATH_GET_VOLUME));
@@ -720,6 +892,14 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   if(!datDir.empty()) {
     std::string monsterDbPath = datDir + "monster.db";
     if(fs::exists(monsterDbPath)) loadMonsterDb(monsterDbPath);
+  }
+
+  // Load house data from root/dat/
+  if(!datDir.empty()) {
+    std::string houseAreasPath = datDir + "houseareas.dat";
+    if(fs::exists(houseAreasPath)) loadHouseAreas(houseAreasPath);
+    std::string housesPath = datDir + "houses.dat";
+    if(fs::exists(housesPath)) loadHouses(map, housesPath);
   }
 
   g_gui.SetLoadDone(0, "Loading sector files...");
@@ -1016,6 +1196,11 @@ bool IOMapSec::saveMap(Map& map, const FileName& identifier) {
     std::string monsterDbPath = saveDatDir + "monster.db";
     FILE* dbFile = fopen(monsterDbPath.c_str(), "wb");
     if(dbFile) { fwrite(dbBuf.data(), 1, dbBuf.size(), dbFile); fclose(dbFile); }
+  }
+
+  // Save houses.dat
+  if(fs::is_directory(saveDatDir) && map.houses.count() > 0) {
+    saveHouses(map, saveDatDir + "houses.dat");
   }
 
   return true;

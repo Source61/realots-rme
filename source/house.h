@@ -44,9 +44,17 @@ public:
 	uint32_t townid;
 	bool guildhall;
 
+	// SEC-specific fields
+	std::string description;
+	int rentOffset = 0;
+	int areaId = 0;
+	Position center;
+
 	void setExit(const Position& pos);
 	void setExit(Map* map, const Position& pos);
 	const Position& getExit() const noexcept { return exit; }
+	const Position& getCenter() const noexcept { return center; }
+	void setCenter(const Position& pos) { center = pos; }
 	uint8_t getEmptyDoorID() const;
 	Position getDoorPositionByID(uint8_t id) const;
 

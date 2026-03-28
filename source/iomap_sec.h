@@ -76,6 +76,18 @@ public:
   static bool monsterTypesLoaded;
   static void loadMonsterTypes(const std::string& monDir);
 
+  // House area data from houseareas.dat
+  struct SecHouseArea {
+    int areaId = 0;
+    std::string name;
+    int sqmPrice = 0;
+    int depotNr = 0;
+  };
+  static std::map<int, SecHouseArea> houseAreas;
+  static void loadHouseAreas(const std::string& filepath);
+  static void loadHouses(Map& map, const std::string& filepath);
+  static void saveHouses(Map& map, const std::string& filepath);
+
   // Spawn data from monster.db
   struct SecSpawnEntry {
     int raceNumber = 0;

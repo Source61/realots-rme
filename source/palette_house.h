@@ -108,6 +108,13 @@ protected:
 	wxTextCtrl* rent_field;
 	wxCheckBox* guildhall_field;
 
+	// SEC-specific fields
+	wxTextCtrl* description_field;
+	wxTextCtrl* rent_offset_field;
+	wxTextCtrl* area_id_field;
+	wxTextCtrl* exit_field;
+	wxTextCtrl* center_field;
+
 	DECLARE_EVENT_TABLE();
 };
 

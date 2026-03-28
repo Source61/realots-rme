@@ -31,6 +31,7 @@
 #include "house_brush.h"
 #include "house_exit_brush.h"
 #include "spawn_brush.h"
+#include "iomap_sec.h"
 
 // ============================================================================
 // House palette
@@ -458,47 +459,89 @@ BEGIN_EVENT_TABLE(EditHouseDialog, wxDialog)
 END_EVENT_TABLE()
 
 EditHouseDialog::EditHouseDialog(wxWindow* parent, Map* map, House* house) :
-	wxDialog(parent, wxID_ANY, "House", wxDefaultPosition, wxSize(250,160)),
+	wxDialog(parent, wxID_ANY, "House", wxDefaultPosition, wxSize(280,160)),
 	map(map),
-	what_house(house)
+	what_house(house),
+	description_field(nullptr),
+	rent_offset_field(nullptr),
+	area_id_field(nullptr),
+	exit_field(nullptr),
+	center_field(nullptr)
 {
 	ASSERT(map);
 	ASSERT(house);
 
-	// Create topsizer
+	bool isSec = (house->areaId > 0 || !house->description.empty() || house->rentOffset != 0);
+
 	wxSizer* sizer = newd wxBoxSizer(wxVERTICAL);
-	wxSizer* tmpsizer;
+	wxFlexGridSizer* grid = newd wxFlexGridSizer(2, 5, 10);
+	grid->AddGrowableCol(1);
 
 	house_name = wxstr(house->name);
 	house_id = i2ws(house->id);
 	house_rent = i2ws(house->rent);
 
-	// House options
-	tmpsizer = newd wxStaticBoxSizer(wxHORIZONTAL, this, "Name");
-	name_field = newd wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(230,20), 0, wxTextValidator(wxFILTER_ASCII, &house_name));
-	tmpsizer->Add(name_field);
-
-	sizer->Add(tmpsizer, wxSizerFlags().Border(wxALL, 20));
-
-	tmpsizer = newd wxStaticBoxSizer(wxHORIZONTAL, this, "Rent / ID");
-	rent_field = newd wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(160,20), 0, wxTextValidator(wxFILTER_NUMERIC, &house_rent));
-	tmpsizer->Add(rent_field);
-	id_field = newd wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(70,20), 0, wxTextValidator(wxFILTER_NUMERIC, &house_id));
+	// ID (read-only)
+	grid->Add(newd wxStaticText(this, wxID_ANY, "ID"), wxSizerFlags().CenterVertical());
+	id_field = newd wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 0, wxTextValidator(wxFILTER_NUMERIC, &house_id));
 	id_field->Enable(false);
-	tmpsizer->Add(id_field);
-	sizer->Add(tmpsizer, wxSizerFlags().Border(wxALL, 20));
+	grid->Add(id_field, wxSizerFlags(1).Expand());
 
-	// House options
-	guildhall_field = newd wxCheckBox(this, wxID_ANY, "Guildhall", wxDefaultPosition);
+	// Name
+	grid->Add(newd wxStaticText(this, wxID_ANY, "Name"), wxSizerFlags().CenterVertical());
+	name_field = newd wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 0, wxTextValidator(wxFILTER_ASCII, &house_name));
+	grid->Add(name_field, wxSizerFlags(1).Expand());
 
-	sizer->Add(guildhall_field, wxSizerFlags().Border(wxRIGHT | wxLEFT | wxBOTTOM, 20));
+	if(isSec) {
+		// Description
+		grid->Add(newd wxStaticText(this, wxID_ANY, "Description"), wxSizerFlags().CenterVertical());
+		description_field = newd wxTextCtrl(this, wxID_ANY, wxstr(house->description));
+		grid->Add(description_field, wxSizerFlags(1).Expand());
+
+		// Rent Offset
+		grid->Add(newd wxStaticText(this, wxID_ANY, "Rent Offset"), wxSizerFlags().CenterVertical());
+		rent_offset_field = newd wxTextCtrl(this, wxID_ANY, i2ws(house->rentOffset));
+		grid->Add(rent_offset_field, wxSizerFlags(1).Expand());
+
+		// Area ID
+		grid->Add(newd wxStaticText(this, wxID_ANY, "Area"), wxSizerFlags().CenterVertical());
+		area_id_field = newd wxTextCtrl(this, wxID_ANY, i2ws(house->areaId));
+		grid->Add(area_id_field, wxSizerFlags(1).Expand());
+	} else {
+		// Rent (non-SEC)
+		grid->Add(newd wxStaticText(this, wxID_ANY, "Rent"), wxSizerFlags().CenterVertical());
+		rent_field = newd wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, 0, wxTextValidator(wxFILTER_NUMERIC, &house_rent));
+		grid->Add(rent_field, wxSizerFlags(1).Expand());
+	}
+
+	// Guildhall
+	grid->Add(newd wxStaticText(this, wxID_ANY, ""), wxSizerFlags());
+	guildhall_field = newd wxCheckBox(this, wxID_ANY, "Guildhall");
 	guildhall_field->SetValue(house->guildhall);
+	grid->Add(guildhall_field);
 
-	// OK/Cancel buttons
-	tmpsizer = newd wxBoxSizer(wxHORIZONTAL);
-	tmpsizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center());
-	tmpsizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center());
-	sizer->Add(tmpsizer, wxSizerFlags(1).Center().Border(wxRIGHT | wxLEFT | wxBOTTOM, 20));
+	if(isSec) {
+		// Exit
+		char posBuf[64];
+		grid->Add(newd wxStaticText(this, wxID_ANY, "Exit"), wxSizerFlags().CenterVertical());
+		snprintf(posBuf, sizeof(posBuf), "%d,%d,%d", house->getExit().x, house->getExit().y, house->getExit().z);
+		exit_field = newd wxTextCtrl(this, wxID_ANY, posBuf);
+		grid->Add(exit_field, wxSizerFlags(1).Expand());
+
+		// Center
+		grid->Add(newd wxStaticText(this, wxID_ANY, "Center"), wxSizerFlags().CenterVertical());
+		snprintf(posBuf, sizeof(posBuf), "%d,%d,%d", house->getCenter().x, house->getCenter().y, house->getCenter().z);
+		center_field = newd wxTextCtrl(this, wxID_ANY, posBuf);
+		grid->Add(center_field, wxSizerFlags(1).Expand());
+	}
+
+	sizer->Add(grid, wxSizerFlags(1).Expand().Border(wxALL, 10));
+
+	// OK/Cancel
+	wxSizer* btnSizer = newd wxBoxSizer(wxHORIZONTAL);
+	btnSizer->Add(newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center());
+	btnSizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center());
+	sizer->Add(btnSizer, wxSizerFlags(0).Center().Border(wxALL, 10));
 
 	SetSizerAndFit(sizer);
 }
@@ -541,8 +584,43 @@ void EditHouseDialog::OnClickOK(wxCommandEvent& WXUNUSED(event))
 
 		// Transfer to house
 		what_house->name = nstr(house_name);
-		what_house->rent = new_house_rent;
 		what_house->guildhall = guildhall_field->GetValue();
+
+		if(rent_offset_field) {
+			// SEC mode: save SEC-specific fields
+			long offset = 0;
+			wxString(rent_offset_field->GetValue()).ToLong(&offset);
+			what_house->rentOffset = (int)offset;
+
+			if(area_id_field) {
+				long areaId = 0;
+				wxString(area_id_field->GetValue()).ToLong(&areaId);
+				what_house->areaId = (int)areaId;
+				what_house->townid = what_house->areaId;
+			}
+
+			if(description_field) what_house->description = nstr(description_field->GetValue());
+
+			if(exit_field) {
+				int ex, ey, ez;
+				if(sscanf(nstr(exit_field->GetValue()).c_str(), "%d,%d,%d", &ex, &ey, &ez) == 3) what_house->setExit(Position(ex, ey, ez));
+			}
+
+			if(center_field) {
+				int cx, cy, cz;
+				if(sscanf(nstr(center_field->GetValue()).c_str(), "%d,%d,%d", &cx, &cy, &cz) == 3) what_house->setCenter(Position(cx, cy, cz));
+			}
+
+			// Recalculate rent
+			auto areaIt = IOMapSec::houseAreas.find(what_house->areaId);
+			if(areaIt != IOMapSec::houseAreas.end()) {
+				what_house->rent = areaIt->second.sqmPrice * (int)what_house->size() + what_house->rentOffset;
+			} else {
+				what_house->rent = what_house->rentOffset;
+			}
+		} else {
+			what_house->rent = new_house_rent;
+		}
 
 		EndModal(1);
 	}
