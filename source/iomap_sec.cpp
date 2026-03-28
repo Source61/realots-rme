@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -752,7 +753,12 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
 
       // Create spawn on tile if none exists
       if(!tile->spawn) {
-        Spawn* spawn = newd Spawn(entry.radius);
+        // Visual radius = sqrt(SEC radius), SEC radius stored for round-trip
+        int visualRadius = (int)std::sqrt((double)entry.radius);
+        if(visualRadius < 1) visualRadius = 1;
+        Spawn* spawn = newd Spawn(visualRadius);
+        spawn->setSecRadius(entry.radius);
+        spawn->setAmount(entry.amount);
         tile->spawn = spawn;
         map.addSpawn(tile);
       }

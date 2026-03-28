@@ -37,12 +37,20 @@ public:
 		size = newsize;
 	}
 
+	// SEC spawn properties
+	int getSecRadius() const noexcept { return secRadius; }
+	void setSecRadius(int r) noexcept { secRadius = r; }
+	int getAmount() const noexcept { return amount; }
+	void setAmount(int a) noexcept { amount = a; }
+
 	// Does not compare selection!
 	bool operator==(const Spawn& other) { return size == other.size; }
 	bool operator!=(const Spawn& other) { return size != other.size; }
 
 protected:
 	int size;
+	int secRadius = 0;  // Raw SEC radius value (visual = sqrt(secRadius))
+	int amount = 1;     // Number of creatures at this spawn point
 	bool selected;
 };
 

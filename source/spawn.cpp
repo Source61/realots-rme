@@ -31,6 +31,8 @@ Spawn* Spawn::deepCopy() const
 {
 	Spawn* copy = new Spawn(size);
 	copy->selected = selected;
+	copy->secRadius = secRadius;
+	copy->amount = amount;
 	return copy;
 }
 
