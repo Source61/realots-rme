@@ -2,7 +2,8 @@
 <menubar>
     <menu name="$File">
         <item name="$New..." hotkey="Ctrl+N" action="NEW" help="Create a new map."/>
-        <item name="$Open..." hotkey="Ctrl+O" action="OPEN" help="Open another map."/>
+        <item name="$Open..." hotkey="Ctrl+O" action="OPEN" help="Open an OTBM map file."/>
+        <item name="Open $SEC Map..." action="OPEN_SEC" help="Open a SEC map from its root directory."/>
         <item name="$Save" hotkey="Ctrl+S" action="SAVE" help="Save the current map."/>
         <item name="Save $As..." hotkey="Ctrl+Alt+S" action="SAVE_AS" help="Save the current map as a new file."/>
         <item name="$Generate Map" action="GENERATE_MAP" help="Generate a new map."/>
