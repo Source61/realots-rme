@@ -20,6 +20,8 @@
 #include "palette_brushlist.h"
 #include "gui.h"
 #include "brush.h"
+#include "raw_brush.h"
+#include "iomap_sec.h"
 
 // ============================================================================
 // Brush Palette Panel
@@ -575,9 +577,24 @@ bool BrushListBox::SelectBrush(const Brush* whatbrush)
 void BrushListBox::OnDrawItem(wxDC& dc, const wxRect& rect, size_t n) const
 {
 	ASSERT(n < tileset->size());
-	Sprite* spr = g_gui.gfx.getSprite(tileset->brushlist[n]->getLookID());
+	Brush* brush = tileset->brushlist[n];
+	Sprite* spr = g_gui.gfx.getSprite(brush->getLookID());
 	if(spr) {
 		spr->DrawTo(&dc, SPRITE_SIZE_32x32, rect.GetX(), rect.GetY(), rect.GetWidth(), rect.GetHeight());
+	}
+	// Purple marker for disguise items from objects.srv
+	if(brush->isRaw()) {
+		RAWBrush* raw = static_cast<RAWBrush*>(brush);
+		uint16_t clientId = raw->getItemType() ? raw->getItemType()->clientID : 0;
+		auto infoIt = IOMapSec::objectInfo.find(clientId);
+		if(infoIt != IOMapSec::objectInfo.end() && infoIt->second.isDisguise) {
+			dc.SetBrush(wxBrush(wxColor(180, 0, 255)));
+			dc.SetPen(*wxTRANSPARENT_PEN);
+			dc.DrawRectangle(rect.GetX(), rect.GetY(), 8, 8);
+			dc.SetFont(wxFont(6, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+			dc.SetTextForeground(wxColor(0xFF, 0xFF, 0xFF));
+			dc.DrawText("D", rect.GetX() + 1, rect.GetY() - 1);
+		}
 	}
 	if(IsSelected(n)) {
 		if(HasFocus())

@@ -1088,6 +1088,11 @@ void MapDrawer::BlitItem(int& draw_x, int& draw_y, const Tile* tile, const Item*
 		green /= 2;
 	}
 
+	// Purple tint for disguised items
+	if(!options.ingame && item->getIntegerAttribute("sec_typeid")) {
+		green /= 3;
+	}
+
 	// Ugly hacks. :)
 	if(type.id == 459 && !options.ingame) {
 		glDisable(GL_TEXTURE_2D);
@@ -1198,6 +1203,11 @@ void MapDrawer::BlitItem(int& draw_x, int& draw_y, const Position& pos, const It
 		red /= 2;
 		blue /= 2;
 		green /= 2;
+	}
+
+	// Purple tint for disguised items
+	if(!options.ingame && item->getIntegerAttribute("sec_typeid")) {
+		green /= 3;
 	}
 
 	if(type.id == 459 && !options.ingame) { // Ugly hack yes?
