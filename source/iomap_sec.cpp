@@ -545,6 +545,7 @@ static void escapeString(std::string& buf, const std::string& str) {
   for(char c : str) {
     if(c == '"') { buf += "\\\""; }
     else if(c == '\\') { buf += "\\\\"; }
+    else if(c == '\n') { buf += "\\n"; }
     else buf += c;
   }
   buf += '"';
