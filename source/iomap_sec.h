@@ -29,6 +29,10 @@ public:
   virtual bool loadMap(Map& map, const FileName& identifier);
   virtual bool saveMap(Map& map, const FileName& identifier);
 
+  // Writer helpers (public for use by save helpers)
+  void writeItem(std::string& buf, Item* item, bool first);
+  void writeItemAttributes(std::string& buf, Item* item);
+
   // Coordinate packing matching CipSoft server format (serversrc/moveuse.cc:23-35)
   // Domain: [24576, 40959] x [24576, 40959] x [0, 15]
   static int32_t PackAbsoluteCoordinate(int x, int y, int z) {
@@ -42,7 +46,6 @@ public:
 
 private:
   bool loadSectorFile(Map& map, const std::string& filepath, int sector_x, int sector_y, int floor_z);
-  bool saveSectorFile(Map& map, const std::string& dirpath, int sector_x, int sector_y, int floor_z);
 
   // Parser helpers
   struct ParsedItem {
@@ -84,10 +87,6 @@ private:
   int32_t readNumber(const std::string& line, size_t& pos);
   std::string readIdentifier(const std::string& line, size_t& pos);
   void skipWhitespace(const std::string& line, size_t& pos);
-
-  // Writer helpers
-  void writeItem(std::ofstream& out, Item* item, bool first);
-  void writeItemAttributes(std::ofstream& out, Item* item);
 
   // objects.srv: clientID -> disguiseTargetClientID for items that render as another item
   static void loadDisguises(const std::string& dataDir);

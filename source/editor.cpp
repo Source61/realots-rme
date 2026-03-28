@@ -338,8 +338,8 @@ void Editor::saveMap(FileName filename, bool showdialog)
 
 		bool save_sec = (fn.GetExt().Lower() == "sec");
 
-		if(showdialog)
-			g_gui.CreateLoadBar(save_sec ? "Saving sector map..." : "Saving OTBM map...");
+		if(showdialog && !save_sec)
+			g_gui.CreateLoadBar("Saving OTBM map...");
 
 		// Perform the actual save
 		bool success;
@@ -351,7 +351,7 @@ void Editor::saveMap(FileName filename, bool showdialog)
 			success = mapsaver.saveMap(map, fn);
 		}
 
-		if(showdialog)
+		if(showdialog && !save_sec)
 			g_gui.DestroyLoadBar();
 
 		// Check for errors...

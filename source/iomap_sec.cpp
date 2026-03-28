@@ -25,7 +25,6 @@
 #include "gui.h"
 
 #include <fstream>
-#include <sstream>
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
@@ -535,115 +534,85 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
 // Writer helpers
 // =============================================================================
 
-static void escapeString(std::ofstream& out, const std::string& str) {
-  out << '"';
-  for(char c : str) {
-    if(c == '"') out << "\\\"";
-    else if(c == '\\') out << "\\\\";
-    else out << c;
-  }
-  out << '"';
+static void appendInt(std::string& buf, int val) {
+  char tmp[16];
+  snprintf(tmp, sizeof(tmp), "%d", val);
+  buf += tmp;
 }
 
-void IOMapSec::writeItemAttributes(std::ofstream& out, Item* item) {
+static void escapeString(std::string& buf, const std::string& str) {
+  buf += '"';
+  for(char c : str) {
+    if(c == '"') { buf += "\\\""; }
+    else if(c == '\\') { buf += "\\\\"; }
+    else buf += c;
+  }
+  buf += '"';
+}
+
+void IOMapSec::writeItemAttributes(std::string& buf, Item* item) {
   const ItemType& type = g_items.getItemType(item->getID());
 
-  // Amount (stackable)
-  if(type.stackable && item->getSubtype() > 0) {
-    out << " Amount=" << item->getSubtype();
-  }
+  if(type.stackable && item->getSubtype() > 0) { buf += " Amount="; appendInt(buf, item->getSubtype()); }
+  if(item->isCharged() && item->getSubtype() > 0 && !type.stackable) { buf += " Charges="; appendInt(buf, item->getSubtype()); }
+  if(type.isSplash() && item->getSubtype() > 0) { buf += " PoolLiquidType="; appendInt(buf, item->getSubtype()); }
+  else if(type.isFluidContainer() && item->getSubtype() > 0) { buf += " ContainerLiquidType="; appendInt(buf, item->getSubtype()); }
 
-  // Charges
-  if(item->isCharged() && item->getSubtype() > 0 && !type.stackable) {
-    out << " Charges=" << item->getSubtype();
-  }
-
-  // Liquid types (splash/fluid container)
-  if(type.isSplash() && item->getSubtype() > 0) {
-    out << " PoolLiquidType=" << item->getSubtype();
-  } else if(type.isFluidContainer() && item->getSubtype() > 0) {
-    out << " ContainerLiquidType=" << item->getSubtype();
-  }
-
-  // KeyNumber (from action ID)
   uint16_t aid = item->getActionID();
-  if(aid > 0) out << " KeyNumber=" << aid;
+  if(aid > 0) { buf += " KeyNumber="; appendInt(buf, aid); }
 
-  // KeyholeNumber
   const int32_t* keyholeId = item->getIntegerAttribute("keyholeid");
-  if(keyholeId && *keyholeId > 0) out << " KeyholeNumber=" << *keyholeId;
+  if(keyholeId && *keyholeId > 0) { buf += " KeyholeNumber="; appendInt(buf, *keyholeId); }
 
-  // ChestQuestNumber
   const int32_t* chestQuest = item->getIntegerAttribute("chestquestnumber");
-  if(chestQuest && *chestQuest > 0) out << " ChestQuestNumber=" << *chestQuest;
+  if(chestQuest && *chestQuest > 0) { buf += " ChestQuestNumber="; appendInt(buf, *chestQuest); }
 
-  // Door attributes
   Door* door = item->getDoor();
-  if(door && door->getDoorID() > 0) {
-    out << " Level=" << (int)door->getDoorID();
-  }
+  if(door && door->getDoorID() > 0) { buf += " Level="; appendInt(buf, door->getDoorID()); }
   const int32_t* doorQuest = item->getIntegerAttribute("doorquestnumber");
-  if(doorQuest && *doorQuest > 0) out << " DoorQuestNumber=" << *doorQuest;
+  if(doorQuest && *doorQuest > 0) { buf += " DoorQuestNumber="; appendInt(buf, *doorQuest); }
   const int32_t* doorQuestVal = item->getIntegerAttribute("doorquestvalue");
-  if(doorQuestVal && *doorQuestVal > 0) out << " DoorQuestValue=" << *doorQuestVal;
+  if(doorQuestVal && *doorQuestVal > 0) { buf += " DoorQuestValue="; appendInt(buf, *doorQuestVal); }
 
-  // Text
   std::string text = item->getText();
-  if(!text.empty()) {
-    out << " String=";
-    escapeString(out, text);
-  }
+  if(!text.empty()) { buf += " String="; escapeString(buf, text); }
 
-  // Editor / Description
   std::string desc = item->getDescription();
-  if(!desc.empty()) {
-    out << " Editor=";
-    escapeString(out, desc);
-  }
+  if(!desc.empty()) { buf += " Editor="; escapeString(buf, desc); }
 
-  // Teleport destination
   Teleport* teleport = item->getTeleport();
   if(teleport && teleport->hasDestination()) {
     const Position& dest = teleport->getDestination();
-    out << " AbsTeleportDestination=" << PackAbsoluteCoordinate(dest.x, dest.y, dest.z);
+    buf += " AbsTeleportDestination=";
+    appendInt(buf, PackAbsoluteCoordinate(dest.x, dest.y, dest.z));
   }
 
-  // Responsible
   const int32_t* resp = item->getIntegerAttribute("responsible");
-  if(resp && *resp > 0) out << " Responsible=" << *resp;
-
-  // Expire times
+  if(resp && *resp > 0) { buf += " Responsible="; appendInt(buf, *resp); }
   const int32_t* expTime = item->getIntegerAttribute("remainingexpiretime");
-  if(expTime && *expTime > 0) out << " RemainingExpireTime=" << *expTime;
+  if(expTime && *expTime > 0) { buf += " RemainingExpireTime="; appendInt(buf, *expTime); }
   const int32_t* savedExp = item->getIntegerAttribute("savedexpiretime");
-  if(savedExp && *savedExp > 0) out << " SavedExpireTime=" << *savedExp;
-
-  // Remaining uses
+  if(savedExp && *savedExp > 0) { buf += " SavedExpireTime="; appendInt(buf, *savedExp); }
   const int32_t* remUses = item->getIntegerAttribute("remaininguses");
-  if(remUses && *remUses > 0) out << " RemainingUses=" << *remUses;
+  if(remUses && *remUses > 0) { buf += " RemainingUses="; appendInt(buf, *remUses); }
 }
 
-void IOMapSec::writeItem(std::ofstream& out, Item* item, bool first) {
-  if(!first) out << ", ";
-  // Write original .sec TypeID if stored (for disguise items), otherwise client ID
+void IOMapSec::writeItem(std::string& buf, Item* item, bool first) {
+  if(!first) buf += ", ";
   const int32_t* secTypeId = item->getIntegerAttribute("sec_typeid");
-  if(secTypeId) {
-    out << *secTypeId;
-  } else {
-    out << item->getClientID();
-  }
-  writeItemAttributes(out, item);
+  if(secTypeId) { appendInt(buf, *secTypeId); }
+  else { appendInt(buf, item->getClientID()); }
+  writeItemAttributes(buf, item);
 
-  // Container contents
   Container* container = item->getContainer();
   if(container && container->getItemCount() > 0) {
-    out << " Content={";
+    buf += " Content={";
     bool childFirst = true;
     for(Item* child : container->getVector()) {
-      writeItem(out, child, childFirst);
+      writeItem(buf, child, childFirst);
       childFirst = false;
     }
-    out << "}";
+    buf += "}";
   }
 }
 
@@ -651,90 +620,31 @@ void IOMapSec::writeItem(std::ofstream& out, Item* item, bool first) {
 // Save
 // =============================================================================
 
-bool IOMapSec::saveSectorFile(Map& map, const std::string& dirpath, int sector_x, int sector_y, int floor_z) {
-  char filename[64];
-  snprintf(filename, sizeof(filename), "%04d-%04d-%02d.sec", sector_x, sector_y, floor_z);
-  std::string filepath = dirpath + filename;
+static void writeTile(std::string& buf, IOMapSec* saver, Tile* tile, int x, int y) {
+  uint16_t flags = tile->getMapFlags() & (TILESTATE_REFRESH | TILESTATE_NOLOGOUT | TILESTATE_PROTECTIONZONE);
+  bool hasItems = tile->ground || !tile->items.empty();
+  if(flags == 0 && !hasItems) return;
 
-  bool empty = true;
+  appendInt(buf, x);
+  buf += '-';
+  appendInt(buf, y);
+  buf += ": ";
 
-  // Check if this sector has any non-empty tiles
-  for(int x = 0; x < 32 && empty; ++x) {
-    for(int y = 0; y < 32 && empty; ++y) {
-      int absX = sector_x * 32 + x;
-      int absY = sector_y * 32 + y;
-      Tile* tile = map.getTile(absX, absY, floor_z);
-      if(tile) {
-        uint16_t flags = tile->getMapFlags() & (TILESTATE_REFRESH | TILESTATE_NOLOGOUT | TILESTATE_PROTECTIONZONE);
-        if(flags != 0 || tile->ground || !tile->items.empty()) empty = false;
-      }
-    }
+  int attrCount = 0;
+  if(flags & TILESTATE_REFRESH) { if(attrCount > 0) buf += ", "; buf += "Refresh"; ++attrCount; }
+  if(flags & TILESTATE_NOLOGOUT) { if(attrCount > 0) buf += ", "; buf += "NoLogout"; ++attrCount; }
+  if(flags & TILESTATE_PROTECTIONZONE) { if(attrCount > 0) buf += ", "; buf += "ProtectionZone"; ++attrCount; }
+
+  if(hasItems) {
+    if(attrCount > 0) buf += ", ";
+    buf += "Content={";
+    bool first = true;
+    if(tile->ground) { saver->writeItem(buf, tile->ground, first); first = false; }
+    for(Item* item : tile->items) { saver->writeItem(buf, item, first); first = false; }
+    buf += "}";
   }
 
-  if(empty) return true; // nothing to write
-
-  std::ofstream out(filepath);
-  if(!out.is_open()) {
-    warning("Could not write sector file: %s", filepath.c_str());
-    return false;
-  }
-
-  // Header (matching serversrc/map.cc:1203-1211)
-  out << "# Tibia - graphical Multi-User-Dungeon\n";
-  out << "# Data for sector " << sector_x << "/" << sector_y << "/" << floor_z << "\n\n";
-
-  for(int x = 0; x < 32; ++x) {
-    for(int y = 0; y < 32; ++y) {
-      int absX = sector_x * 32 + x;
-      int absY = sector_y * 32 + y;
-      Tile* tile = map.getTile(absX, absY, floor_z);
-      if(!tile) continue;
-
-      uint16_t flags = tile->getMapFlags() & (TILESTATE_REFRESH | TILESTATE_NOLOGOUT | TILESTATE_PROTECTIONZONE);
-      bool hasItems = tile->ground || !tile->items.empty();
-      if(flags == 0 && !hasItems) continue;
-
-      out << x << "-" << y << ": ";
-
-      int attrCount = 0;
-
-      // Write flags in same order as server (Refresh, NoLogout, ProtectionZone)
-      if(flags & TILESTATE_REFRESH) {
-        if(attrCount > 0) out << ", ";
-        out << "Refresh";
-        ++attrCount;
-      }
-      if(flags & TILESTATE_NOLOGOUT) {
-        if(attrCount > 0) out << ", ";
-        out << "NoLogout";
-        ++attrCount;
-      }
-      if(flags & TILESTATE_PROTECTIONZONE) {
-        if(attrCount > 0) out << ", ";
-        out << "ProtectionZone";
-        ++attrCount;
-      }
-
-      if(hasItems) {
-        if(attrCount > 0) out << ", ";
-        out << "Content={";
-        bool first = true;
-        if(tile->ground) {
-          writeItem(out, tile->ground, first);
-          first = false;
-        }
-        for(Item* item : tile->items) {
-          writeItem(out, item, first);
-          first = false;
-        }
-        out << "}";
-      }
-
-      out << "\n";
-    }
-  }
-
-  return true;
+  buf += '\n';
 }
 
 bool IOMapSec::saveMap(Map& map, const FileName& identifier) {
@@ -746,13 +656,14 @@ bool IOMapSec::saveMap(Map& map, const FileName& identifier) {
     return false;
   }
 
-  // Determine sector bounds by scanning all tiles
-  int minSX = INT_MAX, minSY = INT_MAX;
-  int maxSX = 0, maxSY = 0;
-  int minZ = 16, maxZ = -1;
-
-  // Collect which sectors have tiles
-  std::set<std::tuple<int,int,int>> occupiedSectors;
+  // Collect all tiles into a flat vector, then sort by sector
+  struct TileEntry {
+    uint16_t sx, sy, ox, oy;
+    uint8_t sz;
+    Tile* tile;
+  };
+  std::vector<TileEntry> entries;
+  entries.reserve(map.getTileCount() > 0 ? map.getTileCount() : 500000);
 
   MapIterator it = map.begin();
   MapIterator end = map.end();
@@ -760,36 +671,46 @@ bool IOMapSec::saveMap(Map& map, const FileName& identifier) {
     Tile* tile = (*it)->get();
     if(tile) {
       const Position& pos = tile->getPosition();
-      int sx = pos.x / 32;
-      int sy = pos.y / 32;
-      int sz = pos.z;
-      occupiedSectors.insert({sx, sy, sz});
-      if(sx < minSX) minSX = sx;
-      if(sx > maxSX) maxSX = sx;
-      if(sy < minSY) minSY = sy;
-      if(sy > maxSY) maxSY = sy;
-      if(sz < minZ) minZ = sz;
-      if(sz > maxZ) maxZ = sz;
+      entries.push_back({(uint16_t)(pos.x / 32), (uint16_t)(pos.y / 32), (uint16_t)(pos.x % 32), (uint16_t)(pos.y % 32), (uint8_t)pos.z, tile});
     }
     ++it;
   }
 
-  if(occupiedSectors.empty()) {
+  if(entries.empty()) {
     error("Map is empty, nothing to save.");
     return false;
   }
 
-  int totalSectors = (int)occupiedSectors.size();
-  int saved = 0;
+  // Sort by (sx, sy, sz, ox, oy) so tiles in the same sector are contiguous and ordered
+  std::sort(entries.begin(), entries.end(), [](const TileEntry& a, const TileEntry& b) {
+    if(a.sx != b.sx) return a.sx < b.sx;
+    if(a.sy != b.sy) return a.sy < b.sy;
+    if(a.sz != b.sz) return a.sz < b.sz;
+    if(a.ox != b.ox) return a.ox < b.ox;
+    return a.oy < b.oy;
+  });
 
-  g_gui.SetLoadDone(0, "Saving sector files...");
+  std::string buf;
+  buf.reserve(64 * 1024);
+  char filename[256];
+  size_t i = 0;
+  size_t total = entries.size();
 
-  for(const auto& [sx, sy, sz] : occupiedSectors) {
-    if(!saveSectorFile(map, dirPath, sx, sy, sz)) {
-      warning("Failed to save sector %d/%d/%d", sx, sy, sz);
+  while(i < total) {
+    uint16_t sx = entries[i].sx, sy = entries[i].sy;
+    uint8_t sz = entries[i].sz;
+
+    snprintf(filename, sizeof(filename), "%s%04d-%04d-%02d.sec", dirPath.c_str(), sx, sy, sz);
+
+    buf.clear();
+
+    while(i < total && entries[i].sx == sx && entries[i].sy == sy && entries[i].sz == sz) {
+      writeTile(buf, this, entries[i].tile, entries[i].ox, entries[i].oy);
+      ++i;
     }
-    ++saved;
-    g_gui.SetLoadDone((int)(100 * saved / totalSectors));
+
+    FILE* f = fopen(filename, "wb");
+    if(f) { fwrite(buf.data(), 1, buf.size(), f); fclose(f); }
   }
 
   return true;
