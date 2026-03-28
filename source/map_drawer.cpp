@@ -1112,7 +1112,7 @@ void MapDrawer::BlitItem(int& draw_x, int& draw_y, const Tile* tile, const Item*
 	if(!ephemeral && type.pickupable && !options.show_items)
 		return;
 
-	// For disguise items, use the disguise target's sprite
+	// For disguise items, use the disguise target's sprite directly from DAT (no OTB)
 	GameSprite* sprite = type.sprite;
 	uint16_t disguiseLookup = 0;
 	const int32_t* secTypeIdPtr = item->getIntegerAttribute("sec_typeid");
@@ -1120,11 +1120,8 @@ void MapDrawer::BlitItem(int& draw_x, int& draw_y, const Tile* tile, const Item*
 	else disguiseLookup = type.clientID;
 	auto disguiseIt = IOMapSec::objectInfo.find(disguiseLookup);
 	if(disguiseIt != IOMapSec::objectInfo.end() && disguiseIt->second.isDisguise) {
-		uint16_t targetServerId = g_items.getServerIdForClientId(disguiseIt->second.disguiseTarget);
-		if(targetServerId) {
-			const ItemType& targetType = g_items.getItemType(targetServerId);
-			if(targetType.sprite) sprite = targetType.sprite;
-		}
+		GameSprite* datSprite = static_cast<GameSprite*>(g_gui.gfx.getSprite(disguiseIt->second.disguiseTarget));
+		if(datSprite) sprite = datSprite;
 	}
 	if(!sprite)
 		return;
@@ -1249,11 +1246,8 @@ void MapDrawer::BlitItem(int& draw_x, int& draw_y, const Position& pos, const It
 	else disguiseLookup2 = type.clientID;
 	auto disguiseIt2 = IOMapSec::objectInfo.find(disguiseLookup2);
 	if(disguiseIt2 != IOMapSec::objectInfo.end() && disguiseIt2->second.isDisguise) {
-		uint16_t targetServerId = g_items.getServerIdForClientId(disguiseIt2->second.disguiseTarget);
-		if(targetServerId) {
-			const ItemType& targetType = g_items.getItemType(targetServerId);
-			if(targetType.sprite) sprite = targetType.sprite;
-		}
+		GameSprite* datSprite = static_cast<GameSprite*>(g_gui.gfx.getSprite(disguiseIt2->second.disguiseTarget));
+		if(datSprite) sprite = datSprite;
 	}
 	if(!sprite)
 		return;

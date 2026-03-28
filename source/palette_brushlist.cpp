@@ -74,7 +74,13 @@ void BrushPalettePanel::AddTilesetPage(const std::string& name, const TilesetCat
 	}
 	BrushPanel* panel = newd BrushPanel(choicebook);
 	panel->AssignTileset(tileset);
-	choicebook->AddPage(panel, wxstr(name));
+	// Insert in alphabetical order
+	wxString wxName = wxstr(name);
+	size_t insertPos = choicebook->GetPageCount();
+	for(size_t i = 0; i < choicebook->GetPageCount(); ++i) {
+		if(choicebook->GetPageText(i).CmpNoCase(wxName) > 0) { insertPos = i; break; }
+	}
+	choicebook->InsertPage(insertPos, panel, wxName);
 }
 
 void BrushPalettePanel::InvalidateContents()
