@@ -65,6 +65,18 @@ BrushPalettePanel::~BrushPalettePanel()
 	////
 }
 
+void BrushPalettePanel::AddTilesetPage(const std::string& name, const TilesetCategory* tileset)
+{
+	if(!choicebook || !tileset || tileset->size() == 0) return;
+	// Check if page already exists
+	for(size_t i = 0; i < choicebook->GetPageCount(); ++i) {
+		if(choicebook->GetPageText(i) == wxstr(name)) return;
+	}
+	BrushPanel* panel = newd BrushPanel(choicebook);
+	panel->AssignTileset(tileset);
+	choicebook->AddPage(panel, wxstr(name));
+}
+
 void BrushPalettePanel::InvalidateContents()
 {
 	for(size_t iz = 0; iz < choicebook->GetPageCount(); ++iz) {

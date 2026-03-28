@@ -209,6 +209,11 @@ void PaletteWindow::LoadCurrentContents()
 	Update();
 }
 
+void PaletteWindow::AddRAWTilesetPage(const std::string& name, const TilesetCategory* tileset)
+{
+	if(raw_palette) raw_palette->AddTilesetPage(name, tileset);
+}
+
 void PaletteWindow::InvalidateContents()
 {
 	if(!choicebook) return;

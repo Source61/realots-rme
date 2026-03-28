@@ -2034,8 +2034,15 @@ void MapCanvas::OnSelectRAWBrush(wxCommandEvent& WXUNUSED(event))
 	Tile* tile = editor.getSelection().getSelectedTile();
 	if(!tile) return;
 	Item* item = tile->getTopSelectedItem();
+	if(!item) return;
 
-	if(item && item->getRAWBrush())
+	// For disguised items, select the disguise brush instead of the target's brush
+	const int32_t* secTypeId = item->getIntegerAttribute("sec_typeid");
+	uint16_t disguiseLookup = secTypeId ? (uint16_t)*secTypeId : item->getClientID();
+	RAWBrush* disguiseBrush = RAWBrush::getDisguiseBrush(disguiseLookup);
+	if(disguiseBrush) { g_gui.SelectBrush(disguiseBrush, TILESET_RAW); return; }
+
+	if(item->getRAWBrush())
 		g_gui.SelectBrush(item->getRAWBrush(), TILESET_RAW);
 }
 

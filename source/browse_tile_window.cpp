@@ -209,8 +209,13 @@ void BrowseTileWindow::OnClickDelete(wxCommandEvent& WXUNUSED(event))
 void BrowseTileWindow::OnClickSelectRaw(wxCommandEvent& WXUNUSED(event))
 {
 	Item* item = item_list->GetSelectedItem();
-	if(item && item->getRAWBrush())
-		g_gui.SelectBrush(item->getRAWBrush(), TILESET_RAW);
+	if(item) {
+		const int32_t* secTypeId = item->getIntegerAttribute("sec_typeid");
+		uint16_t disguiseLookup = secTypeId ? (uint16_t)*secTypeId : item->getClientID();
+		RAWBrush* disguiseBrush = RAWBrush::getDisguiseBrush(disguiseLookup);
+		if(disguiseBrush) { g_gui.SelectBrush(disguiseBrush, TILESET_RAW); EndModal(1); return; }
+		if(item->getRAWBrush()) g_gui.SelectBrush(item->getRAWBrush(), TILESET_RAW);
+	}
 
 	EndModal(1);
 }

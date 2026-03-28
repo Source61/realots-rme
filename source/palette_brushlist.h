@@ -173,6 +173,9 @@ public:
 	// Select the brush in the parameter, this only changes the look of the panel
 	bool SelectBrush(const Brush* whatbrush);
 
+	// Add a new tileset page if it doesn't already exist
+	void AddTilesetPage(const std::string& name, const TilesetCategory* tileset);
+
 	// Called when this page is displayed
 	void OnSwitchIn();
 

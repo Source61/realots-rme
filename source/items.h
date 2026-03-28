@@ -366,6 +366,7 @@ public:
 	ItemType* getRawItemType(uint16_t id);
 
 	bool isValidID(uint16_t id) const;
+	uint16_t getServerIdForClientId(uint16_t clientId) const { auto it = clientToServer.find(clientId); return (it != clientToServer.end()) ? it->second : 0; }
 
 	bool loadFromOtb(const FileName& datafile, wxString& error, wxArrayString& warnings);
 	bool loadFromGameXml(const FileName& datafile, wxString& error, wxArrayString& warnings);

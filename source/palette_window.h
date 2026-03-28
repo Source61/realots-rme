@@ -47,6 +47,9 @@ public:
 	// The currently selected page (terrain, doodad...)
 	PaletteType GetSelectedPage() const;
 
+	// Add a tileset page to the RAW palette dynamically
+	void AddRAWTilesetPage(const std::string& name, const TilesetCategory* tileset);
+
 	// Custom Event handlers (something has changed?)
 	// Finds the brush pointed to by whatbrush and selects it as the current brush (also changes page)
 	// Returns if the brush was found in this palette

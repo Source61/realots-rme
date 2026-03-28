@@ -42,6 +42,13 @@ public:
 	ItemType* getItemType() const { return itemtype; }
 	uint16_t getItemID() const;
 
+	// Disguise support: if > 0, this brush creates items with sec_typeid attribute
+	int32_t secTypeId = 0;
+
+	// Lookup disguise brush by SEC TypeID
+	static RAWBrush* getDisguiseBrush(uint16_t secId);
+	static std::map<uint16_t, RAWBrush*> disguiseBrushes;
+
 protected:
 	ItemType* itemtype;
 };

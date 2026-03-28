@@ -23,6 +23,8 @@
 #include "tile.h"
 #include "item.h"
 #include "gui.h"
+#include "materials.h"
+#include "palette_window.h"
 
 #include <fstream>
 #include <filesystem>
@@ -429,8 +431,7 @@ static bool hasFlag(const std::string& flagStr, const char* flag) {
 }
 
 void IOMapSec::loadObjectsSrv(const std::string& dataDir) {
-  if(objectInfoLoaded) return;
-  objectInfoLoaded = true;
+  if(!objectInfo.empty()) return;
 
   std::string filepath = dataDir + "objects.srv";
   std::ifstream file(filepath);
@@ -545,7 +546,19 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
     std::string candidate = dirPath + rel;
     if(fs::exists(candidate + "objects.srv")) { datDir = candidate; break; }
   }
-  if(!datDir.empty()) loadObjectsSrv(datDir);
+  if(!datDir.empty()) {
+    loadObjectsSrv(datDir);
+    g_materials.createOtherTileset();
+    // Add the Disguise page to all RAW palettes
+    Tileset* dt = g_materials.tilesets["Disguise"];
+    if(dt) {
+      const TilesetCategory* dtc = dt->getCategory(TILESET_RAW);
+      if(dtc && dtc->size() > 0) {
+        PaletteWindow* pal = g_gui.GetPalette();
+        if(pal) pal->AddRAWTilesetPage("Disguise", dtc);
+      }
+    }
+  }
 
   g_gui.SetLoadDone(0, "Loading sector files...");
 

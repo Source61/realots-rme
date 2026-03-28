@@ -101,6 +101,7 @@ private:
   std::string readIdentifier(const std::string& line, size_t& pos);
   void skipWhitespace(const std::string& line, size_t& pos);
 
+public:
   static void loadObjectsSrv(const std::string& dataDir);
   static bool objectInfoLoaded;
 };

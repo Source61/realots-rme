@@ -28,6 +28,7 @@
 #include "brush.h"
 #include "creature_brush.h"
 #include "raw_brush.h"
+#include "iomap_sec.h"
 
 Materials g_materials;
 
@@ -282,6 +283,42 @@ void Materials::createOtherTileset()
 			brush->flagAsVisible();
 			others->getCategory(TILESET_RAW)->brushlist.push_back(type->raw_brush);
 			type->in_other_tileset = true;
+		}
+	}
+
+	// Load objects.srv from data directory if not already loaded
+	if(IOMapSec::objectInfo.empty()) {
+		std::string dataDir = nstr(GUI::GetDataDirectory());
+		for(const auto& sub : {"dat/", ""}) {
+			std::string candidate = dataDir + sub;
+			if(wxFileName::FileExists(wxstr(candidate + "objects.srv"))) { IOMapSec::loadObjectsSrv(candidate); break; }
+		}
+	}
+
+	// Create disguise brushes from objects.srv data
+	RAWBrush::disguiseBrushes.clear();
+	if(!IOMapSec::objectInfo.empty()) {
+		Tileset* disguise_tileset;
+		if(tilesets["Disguise"] != nullptr) {
+			disguise_tileset = tilesets["Disguise"];
+			disguise_tileset->clear();
+		} else {
+			disguise_tileset = newd Tileset(g_brushes, "Disguise");
+			tilesets["Disguise"] = disguise_tileset;
+		}
+		for(auto& pair : IOMapSec::objectInfo) {
+			if(!pair.second.isDisguise) continue;
+			uint16_t secId = pair.first;
+			uint16_t targetClientId = pair.second.disguiseTarget;
+			uint16_t serverId = g_items.getServerIdForClientId(targetClientId);
+			if(serverId == 0) continue;
+			ItemType* type = g_items.getRawItemType(serverId);
+			if(!type || type->id == 0) continue;
+			RAWBrush* brush = newd RAWBrush(serverId);
+			brush->secTypeId = (int32_t)secId;
+			brush->flagAsVisible();
+			disguise_tileset->getCategory(TILESET_RAW)->brushlist.push_back(brush);
+			RAWBrush::disguiseBrushes[secId] = brush;
 		}
 	}
 

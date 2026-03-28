@@ -25,6 +25,13 @@
 //=============================================================================
 // RAW brush
 
+std::map<uint16_t, RAWBrush*> RAWBrush::disguiseBrushes;
+
+RAWBrush* RAWBrush::getDisguiseBrush(uint16_t secId) {
+	auto it = disguiseBrushes.find(secId);
+	return (it != disguiseBrushes.end()) ? it->second : nullptr;
+}
+
 RAWBrush::RAWBrush(uint16_t itemid) :
 	Brush()
 {
@@ -52,6 +59,9 @@ std::string RAWBrush::getName() const
 {
 	if(!itemtype)
 		return "RAWBrush";
+
+	if(secTypeId > 0)
+		return i2s(secTypeId) + " [D>" + i2s(itemtype->clientID) + "] - " + itemtype->name;
 
 	if(itemtype->hookSouth)
 		return i2s(itemtype->id) + " - " + itemtype->name + " (Hook South)";
@@ -94,5 +104,7 @@ void RAWBrush::draw(BaseMap* map, Tile* tile, void* parameter)
 				++iter;
 		}
 	}
-	tile->addItem(Item::Create(itemtype->id));
+	Item* item = Item::Create(itemtype->id);
+	if(item && secTypeId > 0) item->setAttribute("sec_typeid", secTypeId);
+	if(item) tile->addItem(item);
 }

@@ -41,6 +41,7 @@
 #include "carpet_brush.h"
 #include "raw_brush.h"
 #include "table_brush.h"
+#include "iomap_sec.h"
 #include "waypoint_brush.h"
 #include "light_drawer.h"
 
@@ -1111,7 +1112,20 @@ void MapDrawer::BlitItem(int& draw_x, int& draw_y, const Tile* tile, const Item*
 	if(!ephemeral && type.pickupable && !options.show_items)
 		return;
 
+	// For disguise items, use the disguise target's sprite
 	GameSprite* sprite = type.sprite;
+	uint16_t disguiseLookup = 0;
+	const int32_t* secTypeIdPtr = item->getIntegerAttribute("sec_typeid");
+	if(secTypeIdPtr) disguiseLookup = (uint16_t)*secTypeIdPtr;
+	else disguiseLookup = type.clientID;
+	auto disguiseIt = IOMapSec::objectInfo.find(disguiseLookup);
+	if(disguiseIt != IOMapSec::objectInfo.end() && disguiseIt->second.isDisguise) {
+		uint16_t targetServerId = g_items.getServerIdForClientId(disguiseIt->second.disguiseTarget);
+		if(targetServerId) {
+			const ItemType& targetType = g_items.getItemType(targetServerId);
+			if(targetType.sprite) sprite = targetType.sprite;
+		}
+	}
 	if(!sprite)
 		return;
 
@@ -1227,7 +1241,20 @@ void MapDrawer::BlitItem(int& draw_x, int& draw_y, const Position& pos, const It
 	if(!ephemeral && type.pickupable && options.show_items)
 		return;
 
+	// For disguise items, use the disguise target's sprite
 	GameSprite* sprite = type.sprite;
+	uint16_t disguiseLookup2 = 0;
+	const int32_t* secTypeIdPtr2 = item->getIntegerAttribute("sec_typeid");
+	if(secTypeIdPtr2) disguiseLookup2 = (uint16_t)*secTypeIdPtr2;
+	else disguiseLookup2 = type.clientID;
+	auto disguiseIt2 = IOMapSec::objectInfo.find(disguiseLookup2);
+	if(disguiseIt2 != IOMapSec::objectInfo.end() && disguiseIt2->second.isDisguise) {
+		uint16_t targetServerId = g_items.getServerIdForClientId(disguiseIt2->second.disguiseTarget);
+		if(targetServerId) {
+			const ItemType& targetType = g_items.getItemType(targetServerId);
+			if(targetType.sprite) sprite = targetType.sprite;
+		}
+	}
 	if(!sprite)
 		return;
 
