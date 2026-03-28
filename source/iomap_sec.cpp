@@ -221,7 +221,14 @@ Item* IOMapSec::createItemFromParsed(const ParsedItem& parsed) {
     serverId = it->second;
   }
 
-  Item* item = Item::Create(serverId);
+  // If SEC data has Content children, ensure we create a Container even if
+  // OTB doesn't mark this item as one (e.g. quest chests, item shelves)
+  Item* item;
+  if(!parsed.children.empty() && !g_items.getItemType(serverId).isContainer()) {
+    item = new Container(serverId);
+  } else {
+    item = Item::Create(serverId);
+  }
   if(!item) return nullptr;
 
   // Store original .sec TypeID (clientID) for round-trip saving
@@ -632,13 +639,11 @@ static void writeTile(std::string& buf, IOMapSec* saver, Tile* tile, int x, int 
   appendInt(buf, y);
   buf += ": ";
 
-  int attrCount = 0;
-  if(flags & TILESTATE_REFRESH) { if(attrCount > 0) buf += ", "; buf += "Refresh"; ++attrCount; }
-  if(flags & TILESTATE_NOLOGOUT) { if(attrCount > 0) buf += ", "; buf += "NoLogout"; ++attrCount; }
-  if(flags & TILESTATE_PROTECTIONZONE) { if(attrCount > 0) buf += ", "; buf += "ProtectionZone"; ++attrCount; }
+  if(flags & TILESTATE_REFRESH) { buf += "Refresh, "; }
+  if(flags & TILESTATE_NOLOGOUT) { buf += "NoLogout, "; }
+  if(flags & TILESTATE_PROTECTIONZONE) { buf += "ProtectionZone, "; }
 
   if(hasItems) {
-    if(attrCount > 0) buf += ", ";
     buf += "Content={";
     bool first = true;
     if(tile->ground) { saver->writeItem(buf, tile->ground, first); first = false; }
