@@ -57,6 +57,11 @@ void SpritePreviewPanel::SetOutfit(int lookType, int head, int body, int legs, i
   outfit.lookItem = 0;
   outfit.lookMount = 0;
   outfit.lookAddon = 0;
+  // Clear cached DC so colors are re-applied
+  if(!g_gui.gfx.isUnloaded() && lookType > 0) {
+    GameSprite* spr = g_gui.gfx.getCreatureSprite(lookType);
+    if(spr) spr->unloadDC();
+  }
   Refresh();
 }
 

@@ -32,8 +32,11 @@ public:
   EditItemsDialog(wxWindow* parent);
   ~EditItemsDialog();
 
-  void OnListSelect(wxCommandEvent& event);
+  void OnListSelect(wxListEvent& event);
   void OnFilterChanged(wxCommandEvent& event);
+  void OnAddItem(wxCommandEvent& event);
+  void OnRemoveItem(wxCommandEvent& event);
+  void OnDuplicateItem(wxCommandEvent& event);
   void OnSaveAll(wxCommandEvent& event);
   void OnClickOK(wxCommandEvent& event);
   void OnClickCancel(wxCommandEvent& event);
@@ -65,10 +68,9 @@ private:
 
   // Left panel
   wxTextCtrl* filterCtrl;
-  wxListBox* itemList;
+  wxListCtrl* itemList;
 
   // Basic tab
-  SpritePreviewPanel* spritePreview;
   wxSpinCtrl* typeIdCtrl;
   wxTextCtrl* nameCtrl;
   wxTextCtrl* descCtrl;

@@ -18,7 +18,6 @@
 #include "main.h"
 
 #include "item_editor_dialog.h"
-#include "monster_editor_dialog.h" // for SpritePreviewPanel
 #include "gui.h"
 #include "gui_ids.h"
 #include "graphics.h"
@@ -41,11 +40,31 @@ enum {
   ID_ITEM_REMOVE_ATTR_KEY,
   ID_ITEM_CONFIG_FLAG_LIST,
   ID_ITEM_CONFIG_ATTR_LIST,
+  ID_ITEM_ADD,
+  ID_ITEM_REMOVE,
+  ID_ITEM_DUPLICATE,
 };
 
+static wxBitmap MakeItemBitmapForList(int clientItemId) {
+  wxBitmap bmp(32, 32, 24);
+  wxMemoryDC dc(bmp);
+  dc.SetBrush(*wxWHITE_BRUSH);
+  dc.SetPen(*wxWHITE_PEN);
+  dc.DrawRectangle(0, 0, 32, 32);
+  if(!g_gui.gfx.isUnloaded() && clientItemId > 0) {
+    Sprite* spr = g_gui.gfx.getSprite(clientItemId);
+    if(spr) spr->DrawTo(&dc, SPRITE_SIZE_32x32, 0, 0);
+  }
+  dc.SelectObject(wxNullBitmap);
+  return bmp;
+}
+
 BEGIN_EVENT_TABLE(EditItemsDialog, wxDialog)
-  EVT_LISTBOX(EDIT_ITEMS_LISTBOX, EditItemsDialog::OnListSelect)
+  EVT_LIST_ITEM_SELECTED(EDIT_ITEMS_LISTBOX, EditItemsDialog::OnListSelect)
   EVT_TEXT(EDIT_ITEMS_FILTER, EditItemsDialog::OnFilterChanged)
+  EVT_BUTTON(ID_ITEM_ADD, EditItemsDialog::OnAddItem)
+  EVT_BUTTON(ID_ITEM_REMOVE, EditItemsDialog::OnRemoveItem)
+  EVT_BUTTON(ID_ITEM_DUPLICATE, EditItemsDialog::OnDuplicateItem)
   EVT_BUTTON(EDIT_ITEMS_SAVE_ALL, EditItemsDialog::OnSaveAll)
   EVT_BUTTON(wxID_OK, EditItemsDialog::OnClickOK)
   EVT_BUTTON(wxID_CANCEL, EditItemsDialog::OnClickCancel)
@@ -66,15 +85,22 @@ EditItemsDialog::EditItemsDialog(wxWindow* parent) :
 
   wxBoxSizer* mainSizer = newd wxBoxSizer(wxHORIZONTAL);
 
-  // ---- Left panel: item list ----
+  // ---- Left panel: item list with sprites ----
   wxBoxSizer* leftSizer = newd wxBoxSizer(wxVERTICAL);
 
   leftSizer->Add(newd wxStaticText(this, wxID_ANY, "Filter:"), wxSizerFlags(0).Border(wxLEFT | wxTOP, 5));
-  filterCtrl = newd wxTextCtrl(this, EDIT_ITEMS_FILTER, "", wxDefaultPosition, wxSize(200, -1));
+  filterCtrl = newd wxTextCtrl(this, EDIT_ITEMS_FILTER, "", wxDefaultPosition, wxSize(250, -1));
   leftSizer->Add(filterCtrl, wxSizerFlags(0).Expand().Border(wxALL, 5));
 
-  itemList = newd wxListBox(this, EDIT_ITEMS_LISTBOX, wxDefaultPosition, wxSize(200, -1));
+  itemList = newd wxListCtrl(this, EDIT_ITEMS_LISTBOX, wxDefaultPosition, wxSize(250, -1), wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_NO_HEADER);
+  itemList->InsertColumn(0, "", wxLIST_FORMAT_LEFT, 240);
   leftSizer->Add(itemList, wxSizerFlags(1).Expand().Border(wxLEFT | wxRIGHT | wxBOTTOM, 5));
+
+  wxBoxSizer* listBtnSizer = newd wxBoxSizer(wxHORIZONTAL);
+  listBtnSizer->Add(newd wxButton(this, ID_ITEM_ADD, "Add"), wxSizerFlags(1));
+  listBtnSizer->Add(newd wxButton(this, ID_ITEM_DUPLICATE, "Duplicate"), wxSizerFlags(1));
+  listBtnSizer->Add(newd wxButton(this, ID_ITEM_REMOVE, "Remove"), wxSizerFlags(1));
+  leftSizer->Add(listBtnSizer, wxSizerFlags(0).Expand().Border(wxLEFT | wxRIGHT | wxBOTTOM, 5));
 
   mainSizer->Add(leftSizer, wxSizerFlags(0).Expand());
 
@@ -87,15 +113,9 @@ EditItemsDialog::EditItemsDialog(wxWindow* parent) :
   basicGrid->AddGrowableCol(1);
 
   basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "TypeID"), wxSizerFlags().CenterVertical());
-  {
-    wxBoxSizer* idRow = newd wxBoxSizer(wxHORIZONTAL);
-    spritePreview = newd SpritePreviewPanel(basicPanel);
-    idRow->Add(spritePreview, wxSizerFlags(0).Border(wxRIGHT, 5));
-    typeIdCtrl = newd wxSpinCtrl(basicPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
-    typeIdCtrl->Enable(false);
-    idRow->Add(typeIdCtrl, wxSizerFlags(1).Expand());
-    basicGrid->Add(idRow, wxSizerFlags(1).Expand());
-  }
+  typeIdCtrl = newd wxSpinCtrl(basicPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
+  typeIdCtrl->Enable(false);
+  basicGrid->Add(typeIdCtrl, wxSizerFlags(1).Expand());
 
   basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "Name"), wxSizerFlags().CenterVertical());
   nameCtrl = newd wxTextCtrl(basicPanel, wxID_ANY, "");
@@ -108,7 +128,7 @@ EditItemsDialog::EditItemsDialog(wxWindow* parent) :
   basicPanel->SetSizer(basicGrid);
   notebook->AddPage(basicPanel, "Basic");
 
-  // == Tab 2: Flags ==
+  // == Tab 2: Flags (sorted: checked first, then alphabetical) ==
   wxScrolledWindow* flagsScroll = newd wxScrolledWindow(notebook, wxID_ANY);
   flagsScroll->SetScrollRate(0, 10);
   flagsPanel = flagsScroll;
@@ -136,7 +156,6 @@ EditItemsDialog::EditItemsDialog(wxWindow* parent) :
   wxPanel* configPanel = newd wxPanel(notebook, wxID_ANY);
   wxBoxSizer* configSizer = newd wxBoxSizer(wxHORIZONTAL);
 
-  // Left: flags config
   wxBoxSizer* cfgFlagSizer = newd wxBoxSizer(wxVERTICAL);
   cfgFlagSizer->Add(newd wxStaticText(configPanel, wxID_ANY, "Available Flags:"), wxSizerFlags(0).Border(wxALL, 5));
   configFlagList = newd wxListBox(configPanel, ID_ITEM_CONFIG_FLAG_LIST, wxDefaultPosition, wxDefaultSize);
@@ -147,7 +166,6 @@ EditItemsDialog::EditItemsDialog(wxWindow* parent) :
   cfgFlagSizer->Add(cfgFlagBtnSizer, wxSizerFlags(0).Expand().Border(wxALL, 5));
   configSizer->Add(cfgFlagSizer, wxSizerFlags(1).Expand());
 
-  // Right: attribute keys config
   wxBoxSizer* cfgAttrSizer = newd wxBoxSizer(wxVERTICAL);
   cfgAttrSizer->Add(newd wxStaticText(configPanel, wxID_ANY, "Available Attribute Keys:"), wxSizerFlags(0).Border(wxALL, 5));
   configAttrList = newd wxListBox(configPanel, ID_ITEM_CONFIG_ATTR_LIST, wxDefaultPosition, wxDefaultSize);
@@ -180,7 +198,7 @@ EditItemsDialog::EditItemsDialog(wxWindow* parent) :
   RefreshConfigLists();
   BuildItemList();
   if(!sortedTypeIds.empty()) {
-    itemList->SetSelection(0);
+    itemList->SetItemState(0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
     LoadItem(sortedTypeIds[0]);
   }
 
@@ -190,10 +208,8 @@ EditItemsDialog::EditItemsDialog(wxWindow* parent) :
 EditItemsDialog::~EditItemsDialog() {}
 
 void EditItemsDialog::RebuildFlagCheckboxes() {
-  // Clear existing checkboxes
   flagsSizer->Clear(true);
   flagChecks.clear();
-  // Create one checkbox per available flag
   for(const auto& fname : workingConfig.flagNames) {
     wxCheckBox* cb = newd wxCheckBox(flagsPanel, wxID_ANY, fname);
     flagsSizer->Add(cb, wxSizerFlags(0).Border(wxALL, 3));
@@ -204,14 +220,13 @@ void EditItemsDialog::RebuildFlagCheckboxes() {
 }
 
 void EditItemsDialog::BuildItemList() {
-  itemList->Clear();
+  itemList->DeleteAllItems();
   sortedTypeIds.clear();
 
   std::string filter = filterCtrl->GetValue().ToStdString();
   std::string filterLower;
   for(char c : filter) filterLower += std::tolower((unsigned char)c);
 
-  // Collect items with ID >= 100
   std::vector<std::pair<int, std::string>> items;
   for(const auto& pair : workingCopy) {
     if(pair.first < 100) continue;
@@ -221,14 +236,20 @@ void EditItemsDialog::BuildItemList() {
     if(!filterLower.empty() && nameLower.find(filterLower) == std::string::npos && idStr.find(filterLower) == std::string::npos) continue;
     items.push_back({pair.first, pair.second.name});
   }
-  // Sort by ID
   std::sort(items.begin(), items.end());
 
+  // Build image list with item sprites
+  wxImageList* imgList = newd wxImageList(32, 32, false);
   for(const auto& it : items) {
-    wxString label = wxString::Format("%d", it.first);
-    if(!it.second.empty()) label += wxString(" - ") + wxString(it.second);
-    itemList->Append(label);
-    sortedTypeIds.push_back(it.first);
+    imgList->Add(MakeItemBitmapForList(it.first));
+  }
+  itemList->AssignImageList(imgList, wxIMAGE_LIST_SMALL);
+
+  for(int i = 0; i < (int)items.size(); ++i) {
+    wxString label = wxString::Format("%d", items[i].first);
+    if(!items[i].second.empty()) label += wxString(" - ") + wxString(items[i].second);
+    itemList->InsertItem(i, label, i);
+    sortedTypeIds.push_back(items[i].first);
   }
 }
 
@@ -241,12 +262,10 @@ void EditItemsDialog::SaveCurrentItem() {
   obj.name = nameCtrl->GetValue().ToStdString();
   obj.description = descCtrl->GetValue().ToStdString();
 
-  // Save flags from checkboxes
   obj.flags.clear();
-  for(size_t i = 0; i < flagChecks.size() && i < workingConfig.flagNames.size(); ++i) {
-    if(flagChecks[i]->GetValue()) obj.flags.push_back(workingConfig.flagNames[i]);
+  for(size_t i = 0; i < flagChecks.size(); ++i) {
+    if(flagChecks[i]->GetValue()) obj.flags.push_back(flagChecks[i]->GetLabel().ToStdString());
   }
-  // Attributes are already updated in-place via sub-dialogs
 }
 
 void EditItemsDialog::LoadItem(int typeId) {
@@ -259,10 +278,6 @@ void EditItemsDialog::LoadItem(int typeId) {
   nameCtrl->SetValue(obj.name);
   descCtrl->SetValue(obj.description);
 
-  // Update sprite preview
-  if(typeId > 0) spritePreview->SetItemSprite(typeId);
-  else spritePreview->ClearSprite();
-
   RefreshFlagChecks();
   RefreshAttributeList();
 }
@@ -272,18 +287,37 @@ void EditItemsDialog::RefreshFlagChecks() {
   auto it = workingCopy.find(currentTypeId);
   if(it == workingCopy.end()) return;
 
-  const auto& objFlags = it->second.flags;
-  for(size_t i = 0; i < flagChecks.size() && i < workingConfig.flagNames.size(); ++i) {
-    bool found = false;
-    for(const auto& f : objFlags) {
-      // Case-insensitive compare
-      std::string a, b;
-      for(char c : f) a += std::tolower((unsigned char)c);
-      for(char c : workingConfig.flagNames[i]) b += std::tolower((unsigned char)c);
-      if(a == b) { found = true; break; }
-    }
-    flagChecks[i]->SetValue(found);
+  // Determine which flags are checked for this item
+  std::set<std::string> checkedLower;
+  for(const auto& f : it->second.flags) {
+    std::string fl;
+    for(char c : f) fl += std::tolower((unsigned char)c);
+    checkedLower.insert(fl);
   }
+
+  // Build sorted order: checked first (alphabetical), then unchecked (alphabetical)
+  std::vector<std::pair<std::string, bool>> sorted;
+  for(const auto& fname : workingConfig.flagNames) {
+    std::string fl;
+    for(char c : fname) fl += std::tolower((unsigned char)c);
+    sorted.push_back({fname, checkedLower.count(fl) > 0});
+  }
+  std::stable_sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+    if(a.second != b.second) return a.second > b.second; // checked first
+    return false; // preserve alphabetical order from config
+  });
+
+  // Rebuild checkboxes in sorted order
+  flagsSizer->Clear(true);
+  flagChecks.clear();
+  for(const auto& entry : sorted) {
+    wxCheckBox* cb = newd wxCheckBox(flagsPanel, wxID_ANY, entry.first);
+    cb->SetValue(entry.second);
+    flagsSizer->Add(cb, wxSizerFlags(0).Border(wxALL, 3));
+    flagChecks.push_back(cb);
+  }
+  flagsPanel->Layout();
+  flagsPanel->FitInside();
 }
 
 void EditItemsDialog::RefreshAttributeList() {
@@ -306,8 +340,8 @@ void EditItemsDialog::RefreshConfigLists() {
   for(const auto& a : workingConfig.attributeNames) configAttrList->Append(a);
 }
 
-void EditItemsDialog::OnListSelect(wxCommandEvent&) {
-  int sel = itemList->GetSelection();
+void EditItemsDialog::OnListSelect(wxListEvent& event) {
+  int sel = event.GetIndex();
   if(sel < 0 || sel >= (int)sortedTypeIds.size()) return;
   SaveCurrentItem();
   LoadItem(sortedTypeIds[sel]);
@@ -318,8 +352,73 @@ void EditItemsDialog::OnFilterChanged(wxCommandEvent&) {
   BuildItemList();
   currentTypeId = -1;
   if(!sortedTypeIds.empty()) {
-    itemList->SetSelection(0);
+    itemList->SetItemState(0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
     LoadItem(sortedTypeIds[0]);
+  }
+}
+
+void EditItemsDialog::OnAddItem(wxCommandEvent&) {
+  wxTextEntryDialog dlg(this, "New TypeID:", "Add Item");
+  if(dlg.ShowModal() != wxID_OK) return;
+  int newId = std::atoi(dlg.GetValue().ToStdString().c_str());
+  if(newId < 100) {
+    wxMessageBox("TypeID must be >= 100.", "Error", wxOK, this);
+    return;
+  }
+  if(workingCopy.count(newId)) {
+    wxMessageBox("TypeID already exists.", "Error", wxOK, this);
+    return;
+  }
+  IOMapSec::SecObjectType obj;
+  obj.typeId = newId;
+  obj.name = "";
+  workingCopy[newId] = obj;
+  BuildItemList();
+  // Select it
+  for(int i = 0; i < (int)sortedTypeIds.size(); ++i) {
+    if(sortedTypeIds[i] == newId) {
+      itemList->SetItemState(i, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+      itemList->EnsureVisible(i);
+      LoadItem(newId);
+      break;
+    }
+  }
+}
+
+void EditItemsDialog::OnRemoveItem(wxCommandEvent&) {
+  if(currentTypeId < 0) return;
+  int ret = wxMessageBox(wxString::Format("Delete item %d?", currentTypeId), "Confirm", wxYES_NO | wxICON_WARNING, this);
+  if(ret != wxYES) return;
+  workingCopy.erase(currentTypeId);
+  currentTypeId = -1;
+  BuildItemList();
+  if(!sortedTypeIds.empty()) {
+    itemList->SetItemState(0, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+    LoadItem(sortedTypeIds[0]);
+  }
+}
+
+void EditItemsDialog::OnDuplicateItem(wxCommandEvent&) {
+  if(currentTypeId < 0) return;
+  SaveCurrentItem();
+  auto it = workingCopy.find(currentTypeId);
+  if(it == workingCopy.end()) return;
+
+  // Find next available ID
+  int newId = currentTypeId + 1;
+  while(workingCopy.count(newId)) ++newId;
+
+  IOMapSec::SecObjectType obj = it->second;
+  obj.typeId = newId;
+  workingCopy[newId] = obj;
+  BuildItemList();
+  for(int i = 0; i < (int)sortedTypeIds.size(); ++i) {
+    if(sortedTypeIds[i] == newId) {
+      itemList->SetItemState(i, wxLIST_STATE_SELECTED, wxLIST_STATE_SELECTED);
+      itemList->EnsureVisible(i);
+      LoadItem(newId);
+      break;
+    }
   }
 }
 
@@ -356,7 +455,6 @@ void EditItemsDialog::OnAddAttribute(wxCommandEvent&) {
   auto it = workingCopy.find(currentTypeId);
   if(it == workingCopy.end()) return;
 
-  // Show choice of available attribute keys
   wxArrayString choices;
   for(const auto& a : workingConfig.attributeNames) choices.Add(a);
   if(choices.IsEmpty()) {
@@ -407,7 +505,6 @@ void EditItemsDialog::OnAddFlag(wxCommandEvent&) {
   if(dlg.ShowModal() == wxID_OK) {
     std::string name = dlg.GetValue().ToStdString();
     if(name.empty()) return;
-    // Check for duplicates
     for(const auto& f : workingConfig.flagNames) {
       if(f == name) { wxMessageBox("Flag already exists.", "Error", wxOK, this); return; }
     }

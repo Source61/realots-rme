@@ -40,7 +40,6 @@
     <flag name="MovementEvent" />
     <flag name="MultiUse" />
     <flag name="NameDoor" />
-    <flag name="Pee" />
     <flag name="Protection" />
     <flag name="QuestDoor" />
     <flag name="RestrictLevel" />
@@ -102,7 +101,6 @@
     <attribute name="MinimumLevel" />
     <attribute name="NamedoorTarget" />
     <attribute name="Nutrition" />
-    <attribute name="Penis" />
     <attribute name="Professions" />
     <attribute name="ProtectionDamageTypes" />
     <attribute name="QuestdoorTarget" />
