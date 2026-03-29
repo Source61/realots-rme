@@ -65,6 +65,7 @@ ${CMAKE_CURRENT_LIST_DIR}/map_region.h
 ${CMAKE_CURRENT_LIST_DIR}/map_tab.h
 ${CMAKE_CURRENT_LIST_DIR}/map_window.h
 ${CMAKE_CURRENT_LIST_DIR}/materials.h
+${CMAKE_CURRENT_LIST_DIR}/monster_editor_dialog.h
 ${CMAKE_CURRENT_LIST_DIR}/minimap_window.h
 ${CMAKE_CURRENT_LIST_DIR}/mt_rand.h
 ${CMAKE_CURRENT_LIST_DIR}/net_connection.h
@@ -169,6 +170,7 @@ ${CMAKE_CURRENT_LIST_DIR}/map_region.cpp
 ${CMAKE_CURRENT_LIST_DIR}/map_tab.cpp
 ${CMAKE_CURRENT_LIST_DIR}/map_window.cpp
 ${CMAKE_CURRENT_LIST_DIR}/materials.cpp
+${CMAKE_CURRENT_LIST_DIR}/monster_editor_dialog.cpp
 ${CMAKE_CURRENT_LIST_DIR}/minimap_window.cpp
 ${CMAKE_CURRENT_LIST_DIR}/mkpch.cpp
 ${CMAKE_CURRENT_LIST_DIR}/mt_rand.cpp

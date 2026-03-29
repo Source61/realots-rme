@@ -58,6 +58,54 @@ public:
   static std::map<uint16_t, SecObjectInfo> objectInfo;
 
   // Monster data from .mon files
+  enum SecBloodType { BLOOD_BLOOD = 0, BLOOD_SLIME, BLOOD_BONES, BLOOD_FIRE, BLOOD_ENERGY };
+
+  enum SecMonsterFlag : uint32_t {
+    FLAG_KICK_BOXES       = 1 << 0,
+    FLAG_KICK_CREATURES   = 1 << 1,
+    FLAG_SEE_INVISIBLE    = 1 << 2,
+    FLAG_UNPUSHABLE       = 1 << 3,
+    FLAG_DISTANCE_FIGHTING= 1 << 4,
+    FLAG_NO_SUMMON        = 1 << 5,
+    FLAG_NO_ILLUSION      = 1 << 6,
+    FLAG_NO_CONVINCE      = 1 << 7,
+    FLAG_NO_BURNING       = 1 << 8,
+    FLAG_NO_POISON        = 1 << 9,
+    FLAG_NO_ENERGY        = 1 << 10,
+    FLAG_NO_HIT           = 1 << 11,
+    FLAG_NO_LIFE_DRAIN    = 1 << 12,
+    FLAG_NO_PARALYZE      = 1 << 13,
+  };
+
+  enum SecSpellShape { SHAPE_ACTOR = 0, SHAPE_VICTIM, SHAPE_ORIGIN, SHAPE_DESTINATION, SHAPE_ANGLE };
+  enum SecSpellImpact { IMPACT_DAMAGE = 0, IMPACT_FIELD, IMPACT_HEALING, IMPACT_SPEED, IMPACT_DRUNKEN, IMPACT_STRENGTH, IMPACT_OUTFIT, IMPACT_SUMMON };
+
+  struct SecMonsterSkill {
+    std::string name;
+    int actual = 0;
+    int minimum = 0;
+    int maximum = 0;
+    int nextLevel = 0;
+    int factorPercent = 0;
+    int addLevel = 0;
+  };
+
+  struct SecMonsterSpell {
+    SecSpellShape shape = SHAPE_ACTOR;
+    int shapeParams[4] = {0, 0, 0, 0};
+    int shapeParamCount = 0;
+    SecSpellImpact impact = IMPACT_DAMAGE;
+    int impactParams[4] = {0, 0, 0, 0};
+    int impactParamCount = 0;
+    int delay = 0;
+  };
+
+  struct SecMonsterLoot {
+    int itemId = 0;
+    int maxQuantity = 0;
+    int probabilityPerMille = 0;
+  };
+
   struct SecMonsterType {
     int raceNumber = 0;
     std::string name;
@@ -66,15 +114,29 @@ public:
     int outfitColors[4] = {0, 0, 0, 0}; // head, body, legs, feet
     int outfitItemType = 0; // when outfitId == 0
     int corpse = 0;
+    SecBloodType blood = BLOOD_BLOOD;
     int experience = 0;
-    int hitpoints = 0;
+    int summonCost = 0;
+    int fleeThreshold = 0;
     int attack = 0;
     int defend = 0;
     int armor = 0;
+    int poison = 0;
+    int loseTarget = 0;
+    int strategy[4] = {100, 0, 0, 0};
+    int hitpoints = 0; // derived from skills for quick access
+    uint32_t flags = 0;
+    std::vector<SecMonsterSkill> skills;
+    std::vector<SecMonsterSpell> spells;
+    std::vector<SecMonsterLoot> inventory;
+    std::vector<std::string> talk;
+    std::string sourceFilePath;
   };
   static std::map<int, SecMonsterType> monsterTypes; // keyed by raceNumber
   static bool monsterTypesLoaded;
   static void loadMonsterTypes(const std::string& monDir);
+  static void saveMonsterType(const SecMonsterType& mon);
+  static void saveAllMonsterTypes();
 
   // House area data from houseareas.dat
   struct SecHouseArea {

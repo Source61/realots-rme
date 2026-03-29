@@ -491,6 +491,328 @@ void IOMapSec::loadObjectsSrv(const std::string& dataDir) {
   commitEntry();
 }
 
+// Helper: extract a quoted string from text starting at pos
+static std::string monExtractQuoted(const std::string& s, size_t start = 0) {
+  size_t q1 = s.find('"', start);
+  if(q1 == std::string::npos) return "";
+  size_t q2 = s.find('"', q1 + 1);
+  if(q2 == std::string::npos) return "";
+  return s.substr(q1 + 1, q2 - q1 - 1);
+}
+
+// Helper: lowercase a string
+static std::string monLower(const std::string& s) {
+  std::string r;
+  r.reserve(s.size());
+  for(char c : s) r += std::tolower((unsigned char)c);
+  return r;
+}
+
+// Helper: parse an outfit tuple like (35, 0-0-0-0) or (0, 4097)
+static void monParseOutfit(const std::string& value, int& outfitId, int outfitColors[4], int& outfitItemType) {
+  size_t p1 = value.find('(');
+  if(p1 == std::string::npos) return;
+  outfitId = std::atoi(value.c_str() + p1 + 1);
+  size_t comma = value.find(',', p1);
+  if(comma == std::string::npos) return;
+  std::string rest = value.substr(comma + 1);
+  size_t rs = 0;
+  while(rs < rest.size() && std::isspace((unsigned char)rest[rs])) ++rs;
+  rest = rest.substr(rs);
+  if(outfitId == 0) {
+    outfitItemType = std::atoi(rest.c_str());
+  } else {
+    int ci = 0;
+    size_t pos = 0;
+    while(ci < 4 && pos < rest.size()) {
+      outfitColors[ci] = std::atoi(rest.c_str() + pos);
+      ++ci;
+      size_t dash = rest.find('-', pos);
+      if(dash == std::string::npos) break;
+      pos = dash + 1;
+    }
+  }
+}
+
+static void monParseFlags(const std::string& block, uint32_t& flags) {
+  // Tokenize by comma, match flag names
+  std::string token;
+  for(size_t i = 0; i < block.size(); ++i) {
+    char c = block[i];
+    if(c == '{' || c == '}') continue;
+    if(c == ',') {
+      std::string f = monLower(token);
+      token.clear();
+      // trim
+      size_t s = 0; while(s < f.size() && std::isspace((unsigned char)f[s])) ++s;
+      size_t e = f.size(); while(e > s && std::isspace((unsigned char)f[e-1])) --e;
+      f = f.substr(s, e - s);
+      if(f == "kickboxes") flags |= IOMapSec::FLAG_KICK_BOXES;
+      else if(f == "kickcreatures") flags |= IOMapSec::FLAG_KICK_CREATURES;
+      else if(f == "seeinvisible") flags |= IOMapSec::FLAG_SEE_INVISIBLE;
+      else if(f == "unpushable") flags |= IOMapSec::FLAG_UNPUSHABLE;
+      else if(f == "distancefighting") flags |= IOMapSec::FLAG_DISTANCE_FIGHTING;
+      else if(f == "nosummon") flags |= IOMapSec::FLAG_NO_SUMMON;
+      else if(f == "noillusion") flags |= IOMapSec::FLAG_NO_ILLUSION;
+      else if(f == "noconvince") flags |= IOMapSec::FLAG_NO_CONVINCE;
+      else if(f == "noburning") flags |= IOMapSec::FLAG_NO_BURNING;
+      else if(f == "nopoison") flags |= IOMapSec::FLAG_NO_POISON;
+      else if(f == "noenergy") flags |= IOMapSec::FLAG_NO_ENERGY;
+      else if(f == "nohit") flags |= IOMapSec::FLAG_NO_HIT;
+      else if(f == "nolifedrain") flags |= IOMapSec::FLAG_NO_LIFE_DRAIN;
+      else if(f == "noparalyze") flags |= IOMapSec::FLAG_NO_PARALYZE;
+      continue;
+    }
+    token += c;
+  }
+  // Handle last token (after last comma or before })
+  if(!token.empty()) {
+    std::string f = monLower(token);
+    size_t s = 0; while(s < f.size() && std::isspace((unsigned char)f[s])) ++s;
+    size_t e = f.size(); while(e > s && std::isspace((unsigned char)f[e-1])) --e;
+    f = f.substr(s, e - s);
+    if(f == "kickboxes") flags |= IOMapSec::FLAG_KICK_BOXES;
+    else if(f == "kickcreatures") flags |= IOMapSec::FLAG_KICK_CREATURES;
+    else if(f == "seeinvisible") flags |= IOMapSec::FLAG_SEE_INVISIBLE;
+    else if(f == "unpushable") flags |= IOMapSec::FLAG_UNPUSHABLE;
+    else if(f == "distancefighting") flags |= IOMapSec::FLAG_DISTANCE_FIGHTING;
+    else if(f == "nosummon") flags |= IOMapSec::FLAG_NO_SUMMON;
+    else if(f == "noillusion") flags |= IOMapSec::FLAG_NO_ILLUSION;
+    else if(f == "noconvince") flags |= IOMapSec::FLAG_NO_CONVINCE;
+    else if(f == "noburning") flags |= IOMapSec::FLAG_NO_BURNING;
+    else if(f == "nopoison") flags |= IOMapSec::FLAG_NO_POISON;
+    else if(f == "noenergy") flags |= IOMapSec::FLAG_NO_ENERGY;
+    else if(f == "nohit") flags |= IOMapSec::FLAG_NO_HIT;
+    else if(f == "nolifedrain") flags |= IOMapSec::FLAG_NO_LIFE_DRAIN;
+    else if(f == "noparalyze") flags |= IOMapSec::FLAG_NO_PARALYZE;
+  }
+}
+
+static void monParseSkills(const std::string& block, std::vector<IOMapSec::SecMonsterSkill>& skills) {
+  // Parse (Name, v1, v2, v3, v4, v5, v6) tuples
+  size_t pos = 0;
+  while(pos < block.size()) {
+    size_t p1 = block.find('(', pos);
+    if(p1 == std::string::npos) break;
+    size_t p2 = block.find(')', p1);
+    if(p2 == std::string::npos) break;
+    std::string tuple = block.substr(p1 + 1, p2 - p1 - 1);
+    pos = p2 + 1;
+
+    // Split by comma
+    std::vector<std::string> parts;
+    std::string part;
+    for(char c : tuple) {
+      if(c == ',') { parts.push_back(part); part.clear(); }
+      else part += c;
+    }
+    parts.push_back(part);
+    if(parts.size() < 7) continue;
+
+    IOMapSec::SecMonsterSkill skill;
+    // Trim and store name
+    std::string& nm = parts[0];
+    size_t s = 0; while(s < nm.size() && std::isspace((unsigned char)nm[s])) ++s;
+    size_t e = nm.size(); while(e > s && std::isspace((unsigned char)nm[e-1])) --e;
+    skill.name = nm.substr(s, e - s);
+    skill.actual = std::atoi(parts[1].c_str());
+    skill.minimum = std::atoi(parts[2].c_str());
+    skill.maximum = std::atoi(parts[3].c_str());
+    skill.nextLevel = std::atoi(parts[4].c_str());
+    skill.factorPercent = std::atoi(parts[5].c_str());
+    skill.addLevel = std::atoi(parts[6].c_str());
+    skills.push_back(skill);
+  }
+}
+
+static void monParseInventory(const std::string& block, std::vector<IOMapSec::SecMonsterLoot>& inventory) {
+  size_t pos = 0;
+  while(pos < block.size()) {
+    size_t p1 = block.find('(', pos);
+    if(p1 == std::string::npos) break;
+    size_t p2 = block.find(')', p1);
+    if(p2 == std::string::npos) break;
+    std::string tuple = block.substr(p1 + 1, p2 - p1 - 1);
+    pos = p2 + 1;
+
+    std::vector<std::string> parts;
+    std::string part;
+    for(char c : tuple) {
+      if(c == ',') { parts.push_back(part); part.clear(); }
+      else part += c;
+    }
+    parts.push_back(part);
+    if(parts.size() < 3) continue;
+
+    IOMapSec::SecMonsterLoot loot;
+    loot.itemId = std::atoi(parts[0].c_str());
+    loot.maxQuantity = std::atoi(parts[1].c_str());
+    loot.probabilityPerMille = std::atoi(parts[2].c_str());
+    inventory.push_back(loot);
+  }
+}
+
+static void monParseTalk(const std::string& block, std::vector<std::string>& talk) {
+  size_t pos = 0;
+  while(pos < block.size()) {
+    size_t q1 = block.find('"', pos);
+    if(q1 == std::string::npos) break;
+    size_t q2 = block.find('"', q1 + 1);
+    if(q2 == std::string::npos) break;
+    talk.push_back(block.substr(q1 + 1, q2 - q1 - 1));
+    pos = q2 + 1;
+  }
+}
+
+static void monParseSpells(const std::string& block, std::vector<IOMapSec::SecMonsterSpell>& spells) {
+  // Each spell: ShapeType (params) -> ImpactType (params) : delay
+  // Split by comma at depth 0 (not inside parens)
+  std::vector<std::string> entries;
+  int depth = 0;
+  std::string current;
+  for(size_t i = 0; i < block.size(); ++i) {
+    char c = block[i];
+    if(c == '{') continue;
+    if(c == '}') continue;
+    if(c == '(') { depth++; current += c; continue; }
+    if(c == ')') { depth--; current += c; continue; }
+    if(c == ',' && depth == 0) {
+      entries.push_back(current);
+      current.clear();
+      continue;
+    }
+    current += c;
+  }
+  if(!current.empty()) entries.push_back(current);
+
+  for(const std::string& entry : entries) {
+    // Find "->" separator
+    size_t arrow = entry.find("->");
+    if(arrow == std::string::npos) continue;
+    std::string shapePart = entry.substr(0, arrow);
+    std::string rest = entry.substr(arrow + 2);
+
+    // Find ": delay" at the end
+    size_t colon = rest.rfind(':');
+    if(colon == std::string::npos) continue;
+    std::string impactPart = rest.substr(0, colon);
+    int delay = std::atoi(rest.c_str() + colon + 1);
+
+    IOMapSec::SecMonsterSpell spell;
+    spell.delay = delay;
+
+    // Parse shape: identifier (params)
+    std::string shTrimmed;
+    for(char c : shapePart) if(!std::isspace((unsigned char)c) || !shTrimmed.empty()) shTrimmed += c;
+    // Extract identifier
+    size_t shParen = shTrimmed.find('(');
+    std::string shName = (shParen != std::string::npos) ? shTrimmed.substr(0, shParen) : shTrimmed;
+    // trim shName
+    while(!shName.empty() && std::isspace((unsigned char)shName.back())) shName.pop_back();
+    std::string shNameLower = monLower(shName);
+
+    // Extract shape params
+    std::vector<int> shParams;
+    if(shParen != std::string::npos) {
+      size_t shClose = shTrimmed.find(')', shParen);
+      if(shClose != std::string::npos) {
+        std::string pstr = shTrimmed.substr(shParen + 1, shClose - shParen - 1);
+        std::string p;
+        for(char c : pstr) {
+          if(c == ',') { shParams.push_back(std::atoi(p.c_str())); p.clear(); }
+          else p += c;
+        }
+        if(!p.empty()) shParams.push_back(std::atoi(p.c_str()));
+      }
+    }
+
+    if(shNameLower == "actor") { spell.shape = IOMapSec::SHAPE_ACTOR; spell.shapeParamCount = 1; }
+    else if(shNameLower == "victim") { spell.shape = IOMapSec::SHAPE_VICTIM; spell.shapeParamCount = 3; }
+    else if(shNameLower == "origin") { spell.shape = IOMapSec::SHAPE_ORIGIN; spell.shapeParamCount = 2; }
+    else if(shNameLower == "destination") { spell.shape = IOMapSec::SHAPE_DESTINATION; spell.shapeParamCount = 4; }
+    else if(shNameLower == "angle") { spell.shape = IOMapSec::SHAPE_ANGLE; spell.shapeParamCount = 3; }
+    else continue;
+
+    for(int i = 0; i < 4 && i < (int)shParams.size(); ++i) spell.shapeParams[i] = shParams[i];
+
+    // Parse impact: identifier (params) -- Outfit has nested parens ((id, colors), duration)
+    std::string imTrimmed;
+    for(size_t i = 0; i < impactPart.size(); ++i) {
+      if(imTrimmed.empty() && std::isspace((unsigned char)impactPart[i])) continue;
+      imTrimmed += impactPart[i];
+    }
+    // trim trailing
+    while(!imTrimmed.empty() && std::isspace((unsigned char)imTrimmed.back())) imTrimmed.pop_back();
+
+    size_t imParen = imTrimmed.find('(');
+    std::string imName = (imParen != std::string::npos) ? imTrimmed.substr(0, imParen) : imTrimmed;
+    while(!imName.empty() && std::isspace((unsigned char)imName.back())) imName.pop_back();
+    std::string imNameLower = monLower(imName);
+
+    if(imNameLower == "damage") { spell.impact = IOMapSec::IMPACT_DAMAGE; spell.impactParamCount = 3; }
+    else if(imNameLower == "field") { spell.impact = IOMapSec::IMPACT_FIELD; spell.impactParamCount = 1; }
+    else if(imNameLower == "healing") { spell.impact = IOMapSec::IMPACT_HEALING; spell.impactParamCount = 2; }
+    else if(imNameLower == "speed") { spell.impact = IOMapSec::IMPACT_SPEED; spell.impactParamCount = 3; }
+    else if(imNameLower == "drunken") { spell.impact = IOMapSec::IMPACT_DRUNKEN; spell.impactParamCount = 3; }
+    else if(imNameLower == "strength") { spell.impact = IOMapSec::IMPACT_STRENGTH; spell.impactParamCount = 4; }
+    else if(imNameLower == "outfit") { spell.impact = IOMapSec::IMPACT_OUTFIT; spell.impactParamCount = 3; }
+    else if(imNameLower == "summon") { spell.impact = IOMapSec::IMPACT_SUMMON; spell.impactParamCount = 2; }
+    else continue;
+
+    // Extract impact params - handle Outfit's nested parens specially
+    if(imParen != std::string::npos) {
+      if(spell.impact == IOMapSec::IMPACT_OUTFIT) {
+        // Format: ((outfitId, colorOrItem), duration)
+        // Find the inner paren pair
+        size_t innerOpen = imTrimmed.find('(', imParen + 1);
+        if(innerOpen != std::string::npos) {
+          size_t innerClose = imTrimmed.find(')', innerOpen);
+          if(innerClose != std::string::npos) {
+            std::string innerStr = imTrimmed.substr(innerOpen + 1, innerClose - innerOpen - 1);
+            // Parse outfitId, colorOrItem from inner
+            size_t ic = innerStr.find(',');
+            if(ic != std::string::npos) {
+              spell.impactParams[0] = std::atoi(innerStr.c_str()); // outfitId
+              std::string colorPart = innerStr.substr(ic + 1);
+              size_t cs = 0; while(cs < colorPart.size() && std::isspace((unsigned char)colorPart[cs])) ++cs;
+              colorPart = colorPart.substr(cs);
+              // Could be "0-0-0-0" or just a number
+              spell.impactParams[1] = std::atoi(colorPart.c_str());
+            }
+            // Find duration after the inner close paren
+            size_t outerComma = imTrimmed.find(',', innerClose);
+            if(outerComma != std::string::npos) {
+              spell.impactParams[2] = std::atoi(imTrimmed.c_str() + outerComma + 1);
+            }
+          }
+        }
+      } else {
+        // Standard: extract comma-separated ints
+        // Find matching close paren at depth
+        int d = 0;
+        size_t closeP = std::string::npos;
+        for(size_t i = imParen; i < imTrimmed.size(); ++i) {
+          if(imTrimmed[i] == '(') d++;
+          else if(imTrimmed[i] == ')') { d--; if(d == 0) { closeP = i; break; } }
+        }
+        if(closeP != std::string::npos) {
+          std::string pstr = imTrimmed.substr(imParen + 1, closeP - imParen - 1);
+          std::vector<int> imParams;
+          std::string p;
+          for(char c : pstr) {
+            if(c == ',') { imParams.push_back(std::atoi(p.c_str())); p.clear(); }
+            else p += c;
+          }
+          if(!p.empty()) imParams.push_back(std::atoi(p.c_str()));
+          for(int i = 0; i < 4 && i < (int)imParams.size(); ++i) spell.impactParams[i] = imParams[i];
+        }
+      }
+    }
+
+    spells.push_back(spell);
+  }
+}
+
 void IOMapSec::loadMonsterTypes(const std::string& monDir) {
   if(monsterTypesLoaded) return;
   monsterTypesLoaded = true;
@@ -505,9 +827,97 @@ void IOMapSec::loadMonsterTypes(const std::string& monDir) {
     if(!file.is_open()) continue;
 
     SecMonsterType mon;
+    mon.sourceFilePath = entry.path().string();
+
     std::string line;
+    std::string pendingKey;
+    std::string pendingValue;
+
+    auto processKeyValue = [&](const std::string& key, const std::string& value) {
+      if(key == "racenumber") {
+        mon.raceNumber = std::atoi(value.c_str());
+      } else if(key == "name") {
+        mon.name = monExtractQuoted(value);
+      } else if(key == "article") {
+        mon.article = monExtractQuoted(value);
+      } else if(key == "outfit") {
+        monParseOutfit(value, mon.outfitId, mon.outfitColors, mon.outfitItemType);
+      } else if(key == "corpse") {
+        mon.corpse = std::atoi(value.c_str());
+      } else if(key == "blood") {
+        std::string bl = monLower(value);
+        size_t s = 0; while(s < bl.size() && std::isspace((unsigned char)bl[s])) ++s;
+        bl = bl.substr(s);
+        if(bl.find("slime") == 0) mon.blood = BLOOD_SLIME;
+        else if(bl.find("bones") == 0) mon.blood = BLOOD_BONES;
+        else if(bl.find("fire") == 0) mon.blood = BLOOD_FIRE;
+        else if(bl.find("energy") == 0) mon.blood = BLOOD_ENERGY;
+        else mon.blood = BLOOD_BLOOD;
+      } else if(key == "experience") {
+        mon.experience = std::atoi(value.c_str());
+      } else if(key == "summoncost") {
+        mon.summonCost = std::atoi(value.c_str());
+      } else if(key == "fleethreshold") {
+        mon.fleeThreshold = std::atoi(value.c_str());
+      } else if(key == "attack") {
+        mon.attack = std::atoi(value.c_str());
+      } else if(key == "defend") {
+        mon.defend = std::atoi(value.c_str());
+      } else if(key == "armor") {
+        mon.armor = std::atoi(value.c_str());
+      } else if(key == "poison") {
+        mon.poison = std::atoi(value.c_str());
+      } else if(key == "losetarget") {
+        mon.loseTarget = std::atoi(value.c_str());
+      } else if(key == "strategy") {
+        size_t p1 = value.find('(');
+        if(p1 != std::string::npos) {
+          size_t p2 = value.find(')', p1);
+          if(p2 != std::string::npos) {
+            std::string inner = value.substr(p1 + 1, p2 - p1 - 1);
+            int idx = 0;
+            std::string num;
+            for(char c : inner) {
+              if(c == ',') { if(idx < 4) mon.strategy[idx++] = std::atoi(num.c_str()); num.clear(); }
+              else num += c;
+            }
+            if(!num.empty() && idx < 4) mon.strategy[idx] = std::atoi(num.c_str());
+          }
+        }
+      } else if(key == "flags") {
+        monParseFlags(value, mon.flags);
+      } else if(key == "skills") {
+        monParseSkills(value, mon.skills);
+        // Extract hitpoints for quick access
+        for(const auto& sk : mon.skills) {
+          if(monLower(sk.name) == "hitpoints") { mon.hitpoints = sk.actual; break; }
+        }
+      } else if(key == "spells") {
+        monParseSpells(value, mon.spells);
+      } else if(key == "inventory") {
+        monParseInventory(value, mon.inventory);
+      } else if(key == "talk") {
+        monParseTalk(value, mon.talk);
+      }
+    };
+
     while(std::getline(file, line)) {
-      if(line.empty() || line[0] == '#') continue;
+      if(line.empty() || line[0] == '#') {
+        if(!pendingKey.empty()) pendingValue += "\n";
+        continue;
+      }
+
+      // If accumulating a multiline block, append
+      if(!pendingKey.empty()) {
+        pendingValue += " " + line;
+        if(line.find('}') != std::string::npos) {
+          processKeyValue(pendingKey, pendingValue);
+          pendingKey.clear();
+          pendingValue.clear();
+        }
+        continue;
+      }
+
       size_t eqPos = line.find('=');
       if(eqPos == std::string::npos) continue;
 
@@ -516,78 +926,200 @@ void IOMapSec::loadMonsterTypes(const std::string& monDir) {
         if(!std::isspace((unsigned char)line[i])) key += std::tolower((unsigned char)line[i]);
       }
       std::string value = line.substr(eqPos + 1);
-      // Trim leading whitespace from value
       size_t vstart = 0;
       while(vstart < value.size() && std::isspace((unsigned char)value[vstart])) ++vstart;
       value = value.substr(vstart);
 
-      if(key == "racenumber") {
-        mon.raceNumber = std::atoi(value.c_str());
-      } else if(key == "name") {
-        // Extract quoted string
-        size_t q1 = value.find('"');
-        size_t q2 = value.find('"', q1 + 1);
-        if(q1 != std::string::npos && q2 != std::string::npos) mon.name = value.substr(q1 + 1, q2 - q1 - 1);
-      } else if(key == "article") {
-        size_t q1 = value.find('"');
-        size_t q2 = value.find('"', q1 + 1);
-        if(q1 != std::string::npos && q2 != std::string::npos) mon.article = value.substr(q1 + 1, q2 - q1 - 1);
-      } else if(key == "outfit") {
-        // Format: (outfitId, head-body-legs-feet) or (0, objectTypeId)
-        size_t p1 = value.find('(');
-        if(p1 != std::string::npos) {
-          mon.outfitId = std::atoi(value.c_str() + p1 + 1);
-          size_t comma = value.find(',', p1);
-          if(comma != std::string::npos) {
-            std::string rest = value.substr(comma + 1);
-            // Trim
-            size_t rs = 0;
-            while(rs < rest.size() && std::isspace((unsigned char)rest[rs])) ++rs;
-            rest = rest.substr(rs);
-            if(mon.outfitId == 0) {
-              mon.outfitItemType = std::atoi(rest.c_str());
-            } else {
-              // Parse head-body-legs-feet byte sequence
-              int ci = 0;
-              size_t pos = 0;
-              while(ci < 4 && pos < rest.size()) {
-                mon.outfitColors[ci] = std::atoi(rest.c_str() + pos);
-                ++ci;
-                size_t dash = rest.find('-', pos);
-                if(dash == std::string::npos) break;
-                pos = dash + 1;
-              }
-            }
-          }
-        }
-      } else if(key == "corpse") {
-        mon.corpse = std::atoi(value.c_str());
-      } else if(key == "experience") {
-        mon.experience = std::atoi(value.c_str());
-      } else if(key == "attack") {
-        mon.attack = std::atoi(value.c_str());
-      } else if(key == "defend") {
-        mon.defend = std::atoi(value.c_str());
-      } else if(key == "armor") {
-        mon.armor = std::atoi(value.c_str());
-      } else if(key == "skills") {
-        // Extract HitPoints from Skills list: (HitPoints, max, ...)
-        std::string lower;
-        for(char c : value) lower += std::tolower((unsigned char)c);
-        size_t hp = lower.find("hitpoints");
-        if(hp != std::string::npos) {
-          size_t comma1 = value.find(',', hp);
-          if(comma1 != std::string::npos) {
-            mon.hitpoints = std::atoi(value.c_str() + comma1 + 1);
-          }
-        }
+      // Check if this is a multiline block (has { but no })
+      if(value.find('{') != std::string::npos && value.find('}') == std::string::npos) {
+        pendingKey = key;
+        pendingValue = value;
+        continue;
       }
-      // Other fields (flags, spells, inventory, talk) stored as raw strings if needed later
+
+      processKeyValue(key, value);
+    }
+
+    // Handle any remaining pending block
+    if(!pendingKey.empty()) {
+      processKeyValue(pendingKey, pendingValue);
     }
 
     if(mon.raceNumber > 0 && !mon.name.empty()) {
       monsterTypes[mon.raceNumber] = mon;
     }
+  }
+}
+
+// Serializer helpers
+static const char* monBloodName(IOMapSec::SecBloodType bt) {
+  switch(bt) {
+    case IOMapSec::BLOOD_SLIME: return "Slime";
+    case IOMapSec::BLOOD_BONES: return "Bones";
+    case IOMapSec::BLOOD_FIRE: return "Fire";
+    case IOMapSec::BLOOD_ENERGY: return "Energy";
+    default: return "Blood";
+  }
+}
+
+static std::string monFormatOutfit(int outfitId, const int colors[4], int itemType) {
+  if(outfitId == 0) return "(" + std::to_string(outfitId) + ", " + std::to_string(itemType) + ")";
+  return "(" + std::to_string(outfitId) + ", " + std::to_string(colors[0]) + "-" + std::to_string(colors[1]) + "-" + std::to_string(colors[2]) + "-" + std::to_string(colors[3]) + ")";
+}
+
+static const char* monShapeName(IOMapSec::SecSpellShape s) {
+  switch(s) {
+    case IOMapSec::SHAPE_ACTOR: return "Actor";
+    case IOMapSec::SHAPE_VICTIM: return "Victim";
+    case IOMapSec::SHAPE_ORIGIN: return "Origin";
+    case IOMapSec::SHAPE_DESTINATION: return "Destination";
+    case IOMapSec::SHAPE_ANGLE: return "Angle";
+    default: return "Actor";
+  }
+}
+
+static const char* monImpactName(IOMapSec::SecSpellImpact im) {
+  switch(im) {
+    case IOMapSec::IMPACT_DAMAGE: return "Damage";
+    case IOMapSec::IMPACT_FIELD: return "Field";
+    case IOMapSec::IMPACT_HEALING: return "Healing";
+    case IOMapSec::IMPACT_SPEED: return "Speed";
+    case IOMapSec::IMPACT_DRUNKEN: return "Drunken";
+    case IOMapSec::IMPACT_STRENGTH: return "Strength";
+    case IOMapSec::IMPACT_OUTFIT: return "Outfit";
+    case IOMapSec::IMPACT_SUMMON: return "Summon";
+    default: return "Damage";
+  }
+}
+
+static std::string monFormatSpellShape(const IOMapSec::SecMonsterSpell& sp) {
+  std::string r = monShapeName(sp.shape);
+  r += " (";
+  for(int i = 0; i < sp.shapeParamCount; ++i) {
+    if(i > 0) r += ", ";
+    r += std::to_string(sp.shapeParams[i]);
+  }
+  r += ")";
+  return r;
+}
+
+static std::string monFormatSpellImpact(const IOMapSec::SecMonsterSpell& sp) {
+  std::string r = monImpactName(sp.impact);
+  r += " (";
+  if(sp.impact == IOMapSec::IMPACT_OUTFIT) {
+    // Nested: ((outfitId, colorOrItem), duration)
+    r += "(" + std::to_string(sp.impactParams[0]) + ", " + std::to_string(sp.impactParams[1]) + "), " + std::to_string(sp.impactParams[2]);
+  } else {
+    for(int i = 0; i < sp.impactParamCount; ++i) {
+      if(i > 0) r += ", ";
+      r += std::to_string(sp.impactParams[i]);
+    }
+  }
+  r += ")";
+  return r;
+}
+
+// Pad a key name to 14 chars to match .mon file format alignment
+static std::string monPadKey(const std::string& key) {
+  std::string r = key;
+  while(r.size() < 14) r += ' ';
+  return r;
+}
+
+void IOMapSec::saveMonsterType(const SecMonsterType& mon) {
+  if(mon.sourceFilePath.empty()) return;
+  std::ofstream out(mon.sourceFilePath);
+  if(!out.is_open()) return;
+
+  const std::string indent = "                 "; // 17 spaces for continuation lines
+
+  out << "\n";
+  out << monPadKey("RaceNumber") << "= " << mon.raceNumber << "\n";
+  out << monPadKey("Name") << "= \"" << mon.name << "\"\n";
+  out << monPadKey("Article") << "= \"" << mon.article << "\"\n";
+  out << monPadKey("Outfit") << "= " << monFormatOutfit(mon.outfitId, mon.outfitColors, mon.outfitItemType) << "\n";
+  out << monPadKey("Corpse") << "= " << mon.corpse << "\n";
+  out << monPadKey("Blood") << "= " << monBloodName(mon.blood) << "\n";
+  out << monPadKey("Experience") << "= " << mon.experience << "\n";
+  out << monPadKey("SummonCost") << "= " << mon.summonCost << "\n";
+  out << monPadKey("FleeThreshold") << "= " << mon.fleeThreshold << "\n";
+  out << monPadKey("Attack") << "= " << mon.attack << "\n";
+  out << monPadKey("Defend") << "= " << mon.defend << "\n";
+  out << monPadKey("Armor") << "= " << mon.armor << "\n";
+  out << monPadKey("Poison") << "= " << mon.poison << "\n";
+  out << monPadKey("LoseTarget") << "= " << mon.loseTarget << "\n";
+  out << monPadKey("Strategy") << "= (" << mon.strategy[0] << ", " << mon.strategy[1] << ", " << mon.strategy[2] << ", " << mon.strategy[3] << ")\n";
+
+  // Flags
+  if(mon.flags != 0) {
+    out << "\n";
+    struct FlagEntry { uint32_t bit; const char* name; };
+    static const FlagEntry flagTable[] = {
+      {FLAG_KICK_BOXES, "KickBoxes"}, {FLAG_KICK_CREATURES, "KickCreatures"},
+      {FLAG_SEE_INVISIBLE, "SeeInvisible"}, {FLAG_UNPUSHABLE, "Unpushable"},
+      {FLAG_DISTANCE_FIGHTING, "DistanceFighting"}, {FLAG_NO_SUMMON, "NoSummon"},
+      {FLAG_NO_ILLUSION, "NoIllusion"}, {FLAG_NO_CONVINCE, "NoConvince"},
+      {FLAG_NO_BURNING, "NoBurning"}, {FLAG_NO_POISON, "NoPoison"},
+      {FLAG_NO_ENERGY, "NoEnergy"}, {FLAG_NO_HIT, "NoHit"},
+      {FLAG_NO_LIFE_DRAIN, "NoLifeDrain"}, {FLAG_NO_PARALYZE, "NoParalyze"},
+    };
+    std::vector<std::string> activeFlags;
+    for(const auto& fe : flagTable) {
+      if(mon.flags & fe.bit) activeFlags.push_back(fe.name);
+    }
+    out << monPadKey("Flags") << "= {" << activeFlags[0];
+    for(size_t i = 1; i < activeFlags.size(); ++i) {
+      out << ",\n" << indent << activeFlags[i];
+    }
+    out << "}\n";
+  }
+
+  // Skills
+  if(!mon.skills.empty()) {
+    out << "\n";
+    out << monPadKey("Skills") << "= {(" << mon.skills[0].name << ", " << mon.skills[0].actual << ", " << mon.skills[0].minimum << ", " << mon.skills[0].maximum << ", " << mon.skills[0].nextLevel << ", " << mon.skills[0].factorPercent << ", " << mon.skills[0].addLevel << ")";
+    for(size_t i = 1; i < mon.skills.size(); ++i) {
+      const auto& sk = mon.skills[i];
+      out << ",\n" << indent << "(" << sk.name << ", " << sk.actual << ", " << sk.minimum << ", " << sk.maximum << ", " << sk.nextLevel << ", " << sk.factorPercent << ", " << sk.addLevel << ")";
+    }
+    out << "}\n";
+  }
+
+  // Spells
+  if(!mon.spells.empty()) {
+    out << "\n";
+    out << monPadKey("Spells") << "= {" << monFormatSpellShape(mon.spells[0]) << " -> " << monFormatSpellImpact(mon.spells[0]) << " : " << mon.spells[0].delay;
+    for(size_t i = 1; i < mon.spells.size(); ++i) {
+      out << ",\n" << indent << monFormatSpellShape(mon.spells[i]) << " -> " << monFormatSpellImpact(mon.spells[i]) << " : " << mon.spells[i].delay;
+    }
+    out << "}\n";
+  }
+
+  // Inventory
+  if(!mon.inventory.empty()) {
+    out << "\n";
+    out << monPadKey("Inventory") << "= {(" << mon.inventory[0].itemId << ", " << mon.inventory[0].maxQuantity << ", " << mon.inventory[0].probabilityPerMille << ")";
+    for(size_t i = 1; i < mon.inventory.size(); ++i) {
+      const auto& it = mon.inventory[i];
+      out << ",\n" << indent << "(" << it.itemId << ", " << it.maxQuantity << ", " << it.probabilityPerMille << ")";
+    }
+    out << "}\n";
+  }
+
+  // Talk
+  if(!mon.talk.empty()) {
+    out << "\n";
+    out << monPadKey("Talk") << "= {\"" << mon.talk[0] << "\"";
+    for(size_t i = 1; i < mon.talk.size(); ++i) {
+      out << ",\n" << indent << "\"" << mon.talk[i] << "\"";
+    }
+    out << "}\n";
+  }
+}
+
+void IOMapSec::saveAllMonsterTypes() {
+  for(const auto& pair : monsterTypes) {
+    saveMonsterType(pair.second);
   }
 }
 

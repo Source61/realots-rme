@@ -38,6 +38,10 @@
 #include "materials.h"
 #include "live_client.h"
 #include "live_server.h"
+#include "iomap_sec.h"
+#include "monster_editor_dialog.h"
+
+#include <filesystem>
 
 BEGIN_EVENT_TABLE(MainMenuBar, wxEvtHandler)
 END_EVENT_TABLE()
@@ -371,7 +375,7 @@ void MainMenuBar::Update()
 
 	EnableItem(EDIT_TOWNS, is_local);
 	EnableItem(EDIT_ITEMS, false);
-	EnableItem(EDIT_MONSTERS, false);
+	EnableItem(EDIT_MONSTERS, is_local && IOMapSec::monsterTypesLoaded);
 
 	EnableItem(MAP_CLEANUP, is_local);
 	EnableItem(MAP_PROPERTIES, is_local);
@@ -1572,7 +1576,21 @@ void MainMenuBar::OnMapEditItems(wxCommandEvent& WXUNUSED(event))
 
 void MainMenuBar::OnMapEditMonsters(wxCommandEvent& WXUNUSED(event))
 {
-	;
+	if(!g_gui.GetCurrentEditor()) return;
+	Map& map = g_gui.GetCurrentEditor()->getMap();
+	namespace fs = std::filesystem;
+	std::string mapFile = map.getFilename();
+	std::string monDir;
+	if(!mapFile.empty()) {
+		fs::path mapDirPath = fs::path(mapFile).parent_path();
+		monDir = (mapDirPath.parent_path() / "mon").string() + "/";
+	}
+	if(monDir.empty() || !fs::is_directory(monDir)) {
+		g_gui.PopupDialog(frame, "Error", "Monster directory not found.", wxOK);
+		return;
+	}
+	EditMonstersDialog dlg(frame, monDir);
+	dlg.ShowModal();
 }
 
 void MainMenuBar::OnMapStatistics(wxCommandEvent& WXUNUSED(event))
