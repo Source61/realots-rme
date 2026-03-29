@@ -40,6 +40,7 @@
 #include "live_server.h"
 #include "iomap_sec.h"
 #include "monster_editor_dialog.h"
+#include "item_editor_dialog.h"
 
 #include <filesystem>
 
@@ -374,7 +375,7 @@ void MainMenuBar::Update()
 	EnableItem(CLEAR_MODIFIED_STATE, is_local);
 
 	EnableItem(EDIT_TOWNS, is_local);
-	EnableItem(EDIT_ITEMS, false);
+	EnableItem(EDIT_ITEMS, is_local && IOMapSec::objectTypesLoaded);
 	EnableItem(EDIT_MONSTERS, is_local && IOMapSec::monsterTypesLoaded);
 
 	EnableItem(MAP_CLEANUP, is_local);
@@ -1571,7 +1572,9 @@ void MainMenuBar::OnMapEditTowns(wxCommandEvent& WXUNUSED(event))
 
 void MainMenuBar::OnMapEditItems(wxCommandEvent& WXUNUSED(event))
 {
-	;
+	if(!g_gui.GetCurrentEditor()) return;
+	EditItemsDialog dlg(frame);
+	dlg.ShowModal();
 }
 
 void MainMenuBar::OnMapEditMonsters(wxCommandEvent& WXUNUSED(event))

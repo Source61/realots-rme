@@ -57,6 +57,30 @@ public:
   };
   static std::map<uint16_t, SecObjectInfo> objectInfo;
 
+  // Full objects.srv data for the item editor
+  struct SecObjectType {
+    int typeId = 0;
+    std::string name;
+    std::string description;
+    std::vector<std::string> flags;
+    std::vector<std::pair<std::string, int>> attributes; // key=value pairs
+  };
+  static std::map<int, SecObjectType> objectTypes;
+  static bool objectTypesLoaded;
+  static std::string objectsSrvPath; // path to objects.srv for save-back
+  static void loadObjectTypes(const std::string& filepath);
+  static void saveObjectTypes();
+  static void rebuildObjectInfo(); // rebuild SecObjectInfo from SecObjectType
+
+  // Config: available flag/attribute names from XML
+  struct SecObjectConfig {
+    std::vector<std::string> flagNames;
+    std::vector<std::string> attributeNames;
+  };
+  static SecObjectConfig objectConfig;
+  static void loadObjectConfig(const std::string& dataDir);
+  static void saveObjectConfig(const std::string& dataDir);
+
   // Monster data from .mon files
   enum SecBloodType { BLOOD_BLOOD = 0, BLOOD_SLIME, BLOOD_BONES, BLOOD_FIRE, BLOOD_ENERGY };
 

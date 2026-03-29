@@ -40,6 +40,10 @@ namespace fs = std::filesystem;
 
 bool IOMapSec::objectInfoLoaded = false;
 std::map<uint16_t, IOMapSec::SecObjectInfo> IOMapSec::objectInfo;
+std::map<int, IOMapSec::SecObjectType> IOMapSec::objectTypes;
+bool IOMapSec::objectTypesLoaded = false;
+std::string IOMapSec::objectsSrvPath;
+IOMapSec::SecObjectConfig IOMapSec::objectConfig;
 std::map<int, IOMapSec::SecHouseArea> IOMapSec::houseAreas;
 bool IOMapSec::monsterTypesLoaded = false;
 std::map<int, IOMapSec::SecMonsterType> IOMapSec::monsterTypes;
@@ -439,6 +443,218 @@ static bool hasFlag(const std::string& flagStr, const char* flag) {
   return true;
 }
 
+// ============================================================================
+// Object config (flag/attribute names from XML)
+// ============================================================================
+
+void IOMapSec::loadObjectConfig(const std::string& dataDir) {
+  objectConfig.flagNames.clear();
+  objectConfig.attributeNames.clear();
+  std::string filepath = dataDir + "SEC-object-attributes.xml";
+  pugi::xml_document doc;
+  pugi::xml_parse_result result = doc.load_file(filepath.c_str());
+  if(!result) return;
+  pugi::xml_node root = doc.child("sec-object-config");
+  for(pugi::xml_node node = root.child("flags").child("flag"); node; node = node.next_sibling("flag")) {
+    std::string name = node.attribute("name").as_string();
+    if(!name.empty()) objectConfig.flagNames.push_back(name);
+  }
+  for(pugi::xml_node node = root.child("attributes").child("attribute"); node; node = node.next_sibling("attribute")) {
+    std::string name = node.attribute("name").as_string();
+    if(!name.empty()) objectConfig.attributeNames.push_back(name);
+  }
+}
+
+void IOMapSec::saveObjectConfig(const std::string& dataDir) {
+  std::string filepath = dataDir + "SEC-object-attributes.xml";
+  pugi::xml_document doc;
+  pugi::xml_node decl = doc.prepend_child(pugi::node_declaration);
+  decl.append_attribute("version") = "1.0";
+  decl.append_attribute("encoding") = "UTF-8";
+  pugi::xml_node root = doc.append_child("sec-object-config");
+  pugi::xml_node flagsNode = root.append_child("flags");
+  for(const auto& f : objectConfig.flagNames) {
+    pugi::xml_node n = flagsNode.append_child("flag");
+    n.append_attribute("name") = f.c_str();
+  }
+  pugi::xml_node attrsNode = root.append_child("attributes");
+  for(const auto& a : objectConfig.attributeNames) {
+    pugi::xml_node n = attrsNode.append_child("attribute");
+    n.append_attribute("name") = a.c_str();
+  }
+  doc.save_file(filepath.c_str(), "  ");
+}
+
+// ============================================================================
+// Full objects.srv parser/serializer for item editor
+// ============================================================================
+
+static std::string monExtractQuoted(const std::string& s, size_t start = 0);
+
+static void objParseFlags(const std::string& value, std::vector<std::string>& flags) {
+  // Parse {Flag1,Flag2,...}
+  std::string token;
+  for(size_t i = 0; i < value.size(); ++i) {
+    char c = value[i];
+    if(c == '{' || c == '}') continue;
+    if(c == ',') {
+      // Trim token
+      size_t s = 0; while(s < token.size() && std::isspace((unsigned char)token[s])) ++s;
+      size_t e = token.size(); while(e > s && std::isspace((unsigned char)token[e-1])) --e;
+      if(e > s) flags.push_back(token.substr(s, e - s));
+      token.clear();
+      continue;
+    }
+    token += c;
+  }
+  size_t s = 0; while(s < token.size() && std::isspace((unsigned char)token[s])) ++s;
+  size_t e = token.size(); while(e > s && std::isspace((unsigned char)token[e-1])) --e;
+  if(e > s) flags.push_back(token.substr(s, e - s));
+}
+
+static void objParseAttributes(const std::string& value, std::vector<std::pair<std::string, int>>& attrs) {
+  // Parse {Key1=Val1,Key2=Val2,...}
+  std::string token;
+  for(size_t i = 0; i < value.size(); ++i) {
+    char c = value[i];
+    if(c == '{' || c == '}') continue;
+    if(c == ',') {
+      size_t eq = token.find('=');
+      if(eq != std::string::npos) {
+        std::string key = token.substr(0, eq);
+        // Trim key
+        size_t s = 0; while(s < key.size() && std::isspace((unsigned char)key[s])) ++s;
+        size_t e2 = key.size(); while(e2 > s && std::isspace((unsigned char)key[e2-1])) --e2;
+        key = key.substr(s, e2 - s);
+        int val = std::atoi(token.c_str() + eq + 1);
+        if(!key.empty()) attrs.push_back({key, val});
+      }
+      token.clear();
+      continue;
+    }
+    token += c;
+  }
+  // Last token
+  size_t eq = token.find('=');
+  if(eq != std::string::npos) {
+    std::string key = token.substr(0, eq);
+    size_t s = 0; while(s < key.size() && std::isspace((unsigned char)key[s])) ++s;
+    size_t e2 = key.size(); while(e2 > s && std::isspace((unsigned char)key[e2-1])) --e2;
+    key = key.substr(s, e2 - s);
+    int val = std::atoi(token.c_str() + eq + 1);
+    if(!key.empty()) attrs.push_back({key, val});
+  }
+}
+
+void IOMapSec::loadObjectTypes(const std::string& filepath) {
+  if(objectTypesLoaded) return;
+  objectTypesLoaded = true;
+  objectsSrvPath = filepath;
+
+  std::ifstream file(filepath);
+  if(!file.is_open()) return;
+
+  SecObjectType current;
+  int currentId = -1;
+
+  auto commitEntry = [&]() {
+    if(currentId >= 0) {
+      current.typeId = currentId;
+      objectTypes[currentId] = current;
+    }
+  };
+
+  std::string line;
+  while(std::getline(file, line)) {
+    if(line.empty() || line[0] == '#') continue;
+    size_t eqPos = line.find('=');
+    if(eqPos == std::string::npos) continue;
+
+    std::string key;
+    for(size_t i = 0; i < eqPos; ++i) {
+      if(!std::isspace((unsigned char)line[i])) key += line[i];
+    }
+    std::string value = line.substr(eqPos + 1);
+    size_t vs = 0; while(vs < value.size() && std::isspace((unsigned char)value[vs])) ++vs;
+    value = value.substr(vs);
+
+    if(key == "TypeID") {
+      commitEntry();
+      currentId = std::atoi(value.c_str());
+      current = SecObjectType{};
+    } else if(key == "Name") {
+      current.name = monExtractQuoted(value);
+    } else if(key == "Description") {
+      current.description = monExtractQuoted(value);
+    } else if(key == "Flags") {
+      objParseFlags(value, current.flags);
+    } else if(key == "Attributes") {
+      objParseAttributes(value, current.attributes);
+    }
+  }
+  commitEntry();
+}
+
+void IOMapSec::saveObjectTypes() {
+  if(objectsSrvPath.empty()) return;
+  std::ofstream out(objectsSrvPath);
+  if(!out.is_open()) return;
+
+  // Sort by typeId
+  std::vector<int> ids;
+  for(const auto& pair : objectTypes) ids.push_back(pair.first);
+  std::sort(ids.begin(), ids.end());
+
+  for(int id : ids) {
+    const SecObjectType& obj = objectTypes.at(id);
+    out << "\n";
+    out << "TypeID      = " << obj.typeId << "\n";
+    out << "Name        = \"" << obj.name << "\"\n";
+    if(!obj.description.empty()) {
+      out << "Description = \"" << obj.description << "\"\n";
+    }
+    out << "Flags       = {";
+    for(size_t i = 0; i < obj.flags.size(); ++i) {
+      if(i > 0) out << ",";
+      out << obj.flags[i];
+    }
+    out << "}\n";
+    out << "Attributes  = {";
+    for(size_t i = 0; i < obj.attributes.size(); ++i) {
+      if(i > 0) out << ",";
+      out << obj.attributes[i].first << "=" << obj.attributes[i].second;
+    }
+    out << "}\n";
+  }
+}
+
+void IOMapSec::rebuildObjectInfo() {
+  objectInfo.clear();
+  for(const auto& pair : objectTypes) {
+    const SecObjectType& obj = pair.second;
+    SecObjectInfo info;
+    for(const auto& f : obj.flags) {
+      std::string fl;
+      for(char c : f) fl += std::tolower((unsigned char)c);
+      if(fl == "bank") info.isBank = true;
+      else if(fl == "bottom") info.isBottom = true;
+      else if(fl == "top") info.isTop = true;
+      else if(fl == "container" || fl == "chest") info.isContainer = true;
+      else if(fl == "keydoor" || fl == "namedoor" || fl == "leveldoor" || fl == "questdoor") info.isDoor = true;
+      else if(fl == "teleportabsolute" || fl == "teleportrelative") info.isTeleport = true;
+      else if(fl == "disguise") info.isDisguise = true;
+    }
+    if(info.isDisguise) {
+      for(const auto& attr : obj.attributes) {
+        std::string ak;
+        for(char c : attr.first) ak += std::tolower((unsigned char)c);
+        if(ak == "disguisetarget") { info.disguiseTarget = (uint16_t)attr.second; break; }
+      }
+    }
+    objectInfo[(uint16_t)pair.first] = info;
+  }
+}
+
 void IOMapSec::loadObjectsSrv(const std::string& dataDir) {
   if(!objectInfo.empty()) return;
 
@@ -492,7 +708,7 @@ void IOMapSec::loadObjectsSrv(const std::string& dataDir) {
 }
 
 // Helper: extract a quoted string from text starting at pos
-static std::string monExtractQuoted(const std::string& s, size_t start = 0) {
+static std::string monExtractQuoted(const std::string& s, size_t start) {
   size_t q1 = s.find('"', start);
   if(q1 == std::string::npos) return "";
   size_t q2 = s.find('"', q1 + 1);
@@ -1387,6 +1603,9 @@ bool IOMapSec::loadMap(Map& map, const FileName& identifier) {
   // Load objects.srv from root/dat/
   if(!datDir.empty() && fs::exists(datDir + "objects.srv")) {
     loadObjectsSrv(datDir);
+    loadObjectTypes(datDir + "objects.srv");
+    std::string rmeDataDir = nstr(g_gui.getFoundDataDirectory()) + "/";
+    loadObjectConfig(rmeDataDir);
     g_materials.createOtherTileset();
     Tileset* dt = g_materials.tilesets["Disguise"];
     if(dt) {
