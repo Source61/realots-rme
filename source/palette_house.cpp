@@ -459,7 +459,7 @@ BEGIN_EVENT_TABLE(EditHouseDialog, wxDialog)
 END_EVENT_TABLE()
 
 EditHouseDialog::EditHouseDialog(wxWindow* parent, Map* map, House* house) :
-	wxDialog(parent, wxID_ANY, "House", wxDefaultPosition, wxSize(280,160)),
+	wxDialog(parent, wxID_ANY, "House", wxDefaultPosition, wxSize(550,400)),
 	map(map),
 	what_house(house),
 	description_field(nullptr),
@@ -543,7 +543,9 @@ EditHouseDialog::EditHouseDialog(wxWindow* parent, Map* map, House* house) :
 	btnSizer->Add(newd wxButton(this, wxID_CANCEL, "Cancel"), wxSizerFlags(1).Center());
 	sizer->Add(btnSizer, wxSizerFlags(0).Center().Border(wxALL, 10));
 
-	SetSizerAndFit(sizer);
+	SetSizer(sizer);
+	SetMinSize(wxSize(550, 400));
+	SetSize(wxSize(550, 400));
 }
 
 EditHouseDialog::~EditHouseDialog()

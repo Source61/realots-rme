@@ -43,7 +43,7 @@ BEGIN_EVENT_TABLE(PaletteWindow, wxPanel)
 END_EVENT_TABLE()
 
 PaletteWindow::PaletteWindow(wxWindow* parent, const TilesetContainer& tilesets) :
-	wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(230, 250)),
+	wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(300, 250)),
 	choicebook(nullptr),
 	terrain_palette(nullptr),
 	doodad_palette(nullptr),
@@ -53,10 +53,10 @@ PaletteWindow::PaletteWindow(wxWindow* parent, const TilesetContainer& tilesets)
 	waypoint_palette(nullptr),
 	raw_palette(nullptr)
 {
-	SetMinSize(wxSize(225, 250));
+	SetMinSize(wxSize(300, 250));
 
 	// Create choicebook
-	choicebook = newd wxChoicebook(this, PALETTE_CHOICEBOOK, wxDefaultPosition, wxSize(230, 250));
+	choicebook = newd wxChoicebook(this, PALETTE_CHOICEBOOK, wxDefaultPosition, wxSize(300, 250));
 
 	terrain_palette = static_cast<BrushPalettePanel*>(CreateTerrainPalette(choicebook, tilesets));
 	choicebook->AddPage(terrain_palette, terrain_palette->GetName());
@@ -81,7 +81,7 @@ PaletteWindow::PaletteWindow(wxWindow* parent, const TilesetContainer& tilesets)
 
 	// Setup sizers
 	wxSizer* sizer = newd wxBoxSizer(wxVERTICAL);
-	choicebook->SetMinSize(wxSize(225, 300));
+	choicebook->SetMinSize(wxSize(300, 300));
 	sizer->Add(choicebook, 1, wxEXPAND);
 	SetSizer(sizer);
 
