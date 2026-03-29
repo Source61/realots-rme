@@ -238,10 +238,19 @@ void EditItemsDialog::BuildItemList() {
   }
   std::sort(items.begin(), items.end());
 
-  // Build image list with item sprites
+  // Build image list with item sprites (use DisguiseTarget sprite if present)
   wxImageList* imgList = newd wxImageList(32, 32, false);
   for(const auto& it : items) {
-    imgList->Add(MakeItemBitmapForList(it.first));
+    int spriteId = it.first;
+    auto objIt = workingCopy.find(it.first);
+    if(objIt != workingCopy.end()) {
+      for(const auto& attr : objIt->second.attributes) {
+        std::string ak;
+        for(char c : attr.first) ak += std::tolower((unsigned char)c);
+        if(ak == "disguisetarget" && attr.second > 0) { spriteId = attr.second; break; }
+      }
+    }
+    imgList->Add(MakeItemBitmapForList(spriteId));
   }
   itemList->AssignImageList(imgList, wxIMAGE_LIST_SMALL);
 
@@ -471,6 +480,7 @@ void EditItemsDialog::OnAddAttribute(wxCommandEvent&) {
 
   it->second.attributes.push_back({key, val});
   RefreshAttributeList();
+  UpdateCurrentItemSprite();
 }
 
 void EditItemsDialog::OnEditAttribute(wxCommandEvent&) {
@@ -485,6 +495,7 @@ void EditItemsDialog::OnEditAttribute(wxCommandEvent&) {
   if(valDlg.ShowModal() == wxID_OK) {
     attr.second = std::atoi(valDlg.GetValue().ToStdString().c_str());
     RefreshAttributeList();
+    UpdateCurrentItemSprite();
   }
 }
 
@@ -496,6 +507,29 @@ void EditItemsDialog::OnRemoveAttribute(wxCommandEvent&) {
   if(it == workingCopy.end() || sel >= (int)it->second.attributes.size()) return;
   it->second.attributes.erase(it->second.attributes.begin() + sel);
   RefreshAttributeList();
+  UpdateCurrentItemSprite();
+}
+
+void EditItemsDialog::UpdateCurrentItemSprite() {
+  if(currentTypeId < 0) return;
+  // Find which index in the list this item is
+  for(int i = 0; i < (int)sortedTypeIds.size(); ++i) {
+    if(sortedTypeIds[i] == currentTypeId) {
+      int spriteId = currentTypeId;
+      auto objIt = workingCopy.find(currentTypeId);
+      if(objIt != workingCopy.end()) {
+        for(const auto& attr : objIt->second.attributes) {
+          std::string ak;
+          for(char c : attr.first) ak += std::tolower((unsigned char)c);
+          if(ak == "disguisetarget" && attr.second > 0) { spriteId = attr.second; break; }
+        }
+      }
+      wxImageList* imgList = itemList->GetImageList(wxIMAGE_LIST_SMALL);
+      if(imgList) imgList->Replace(i, MakeItemBitmapForList(spriteId));
+      itemList->RefreshItem(i);
+      break;
+    }
+  }
 }
 
 // ---- Config events ----

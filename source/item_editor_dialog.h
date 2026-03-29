@@ -60,6 +60,7 @@ private:
   void RefreshAttributeList();
   void RefreshConfigLists();
   void RebuildFlagCheckboxes();
+  void UpdateCurrentItemSprite();
 
   std::map<int, IOMapSec::SecObjectType> workingCopy;
   IOMapSec::SecObjectConfig workingConfig;
