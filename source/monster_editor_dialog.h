@@ -20,9 +20,31 @@
 
 #include "main.h"
 #include "iomap_sec.h"
+#include "outfit.h"
 #include <wx/listctrl.h>
 #include <wx/notebook.h>
 #include <wx/spinctrl.h>
+
+class GameSprite;
+
+// Panel that renders a 32x32 sprite preview (outfit or item)
+class SpritePreviewPanel : public wxPanel
+{
+public:
+  SpritePreviewPanel(wxWindow* parent, wxWindowID id = wxID_ANY);
+  void SetOutfit(int lookType, int head, int body, int legs, int feet);
+  void SetItemSprite(int serverItemId);
+  void ClearSprite();
+  void OnPaint(wxPaintEvent& event);
+
+private:
+  enum Mode { NONE, OUTFIT_MODE, ITEM_MODE };
+  Mode mode = NONE;
+  Outfit outfit;
+  int itemSpriteId = 0; // clientID for item mode
+
+  DECLARE_EVENT_TABLE()
+};
 
 // Sub-dialog for editing a single spell
 class EditSpellDialog : public wxDialog
@@ -85,12 +107,14 @@ public:
   EditLootDialog(wxWindow* parent, IOMapSec::SecMonsterLoot& loot);
   void OnClickOK(wxCommandEvent& event);
   void OnClickCancel(wxCommandEvent& event);
+  void OnItemIdChanged(wxSpinEvent& event);
 
 private:
   IOMapSec::SecMonsterLoot& loot;
   wxSpinCtrl* itemIdCtrl;
   wxSpinCtrl* quantityCtrl;
   wxSpinCtrl* probabilityCtrl;
+  SpritePreviewPanel* itemPreview;
 
   DECLARE_EVENT_TABLE()
 };
@@ -130,6 +154,10 @@ public:
   void OnEditTalk(wxCommandEvent& event);
   void OnRemoveTalk(wxCommandEvent& event);
 
+  // Sprite preview updates
+  void OnOutfitChanged(wxSpinEvent& event);
+  void OnCorpseChanged(wxSpinEvent& event);
+
 private:
   void BuildMonsterList();
   void SaveCurrentMonster();
@@ -138,6 +166,7 @@ private:
   void RefreshSpellList();
   void RefreshInventoryList();
   void RefreshTalkList();
+  void RefreshPreviews();
 
   std::string monDir;
   std::map<int, IOMapSec::SecMonsterType> workingCopy;
@@ -166,6 +195,10 @@ private:
   wxSpinCtrl* poisonCtrl;
   wxSpinCtrl* loseTargetCtrl;
   wxSpinCtrl* strategyCtrls[4];
+
+  // Sprite previews
+  SpritePreviewPanel* outfitPreview;
+  SpritePreviewPanel* corpsePreview;
 
   // Flags tab
   wxCheckBox* flagChecks[14];

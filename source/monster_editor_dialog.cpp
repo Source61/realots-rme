@@ -20,14 +20,83 @@
 #include "monster_editor_dialog.h"
 #include "gui.h"
 #include "gui_ids.h"
+#include "graphics.h"
 
 #include <wx/sizer.h>
 #include <wx/statbox.h>
 #include <wx/statline.h>
 #include <wx/textdlg.h>
+#include <wx/dcbuffer.h>
 #include <filesystem>
 
 namespace fs = std::filesystem;
+
+// ============================================================================
+// SpritePreviewPanel
+// ============================================================================
+
+BEGIN_EVENT_TABLE(SpritePreviewPanel, wxPanel)
+  EVT_PAINT(SpritePreviewPanel::OnPaint)
+END_EVENT_TABLE()
+
+SpritePreviewPanel::SpritePreviewPanel(wxWindow* parent, wxWindowID id) :
+  wxPanel(parent, id, wxDefaultPosition, wxSize(36, 36))
+{
+  SetMinSize(wxSize(36, 36));
+  SetMaxSize(wxSize(36, 36));
+  SetBackgroundStyle(wxBG_STYLE_PAINT);
+}
+
+void SpritePreviewPanel::SetOutfit(int lookType, int head, int body, int legs, int feet) {
+  mode = OUTFIT_MODE;
+  outfit.lookType = lookType;
+  outfit.lookHead = head;
+  outfit.lookBody = body;
+  outfit.lookLegs = legs;
+  outfit.lookFeet = feet;
+  outfit.lookItem = 0;
+  outfit.lookMount = 0;
+  outfit.lookAddon = 0;
+  Refresh();
+}
+
+void SpritePreviewPanel::SetItemSprite(int clientItemId) {
+  mode = ITEM_MODE;
+  itemSpriteId = clientItemId;
+  Refresh();
+}
+
+void SpritePreviewPanel::ClearSprite() {
+  mode = NONE;
+  Refresh();
+}
+
+void SpritePreviewPanel::OnPaint(wxPaintEvent&) {
+  wxBufferedPaintDC dc(this);
+
+  dc.SetBrush(wxBrush(wxColour(0, 0, 0)));
+  dc.SetPen(*wxBLACK_PEN);
+  dc.DrawRectangle(0, 0, 36, 36);
+
+  if(g_gui.gfx.isUnloaded()) return;
+
+  if(mode == OUTFIT_MODE && outfit.lookType > 0) {
+    GameSprite* spr = g_gui.gfx.getCreatureSprite(outfit.lookType);
+    if(spr) {
+      wxRect rect(2, 2, 32, 32);
+      spr->DrawTo(&dc, rect, outfit);
+      return;
+    }
+  }
+
+  if(mode == ITEM_MODE && itemSpriteId > 0) {
+    Sprite* spr = g_gui.gfx.getSprite(itemSpriteId);
+    if(spr) {
+      spr->DrawTo(&dc, SPRITE_SIZE_32x32, 2, 2);
+      return;
+    }
+  }
+}
 
 // ============================================================================
 // Flag names table (order matches SecMonsterFlag bits)
@@ -101,6 +170,14 @@ enum {
   ID_SPELL_LIST,
   ID_INVENTORY_LIST,
   ID_TALK_LIST,
+  ID_OUTFIT_ID_SPIN,
+  ID_OUTFIT_HEAD_SPIN,
+  ID_OUTFIT_BODY_SPIN,
+  ID_OUTFIT_LEGS_SPIN,
+  ID_OUTFIT_FEET_SPIN,
+  ID_OUTFIT_ITEM_SPIN,
+  ID_CORPSE_SPIN,
+  ID_LOOT_ITEM_SPIN,
 };
 
 // ============================================================================
@@ -175,8 +252,8 @@ EditSpellDialog::EditSpellDialog(wxWindow* parent, IOMapSec::SecMonsterSpell& sp
   // Delay
   wxFlexGridSizer* delayGrid = newd wxFlexGridSizer(2, 5, 10);
   delayGrid->AddGrowableCol(1);
-  delayGrid->Add(newd wxStaticText(this, wxID_ANY, "Delay"), wxSizerFlags().CenterVertical());
-  delayCtrl = newd wxSpinCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 1000, spell.delay);
+  delayGrid->Add(newd wxStaticText(this, wxID_ANY, "Chance (1/N)"), wxSizerFlags().CenterVertical());
+  delayCtrl = newd wxSpinCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 100, spell.delay);
   delayGrid->Add(delayCtrl, wxSizerFlags(1).Expand());
   topSizer->Add(delayGrid, wxSizerFlags(0).Expand().Border(wxALL, 10));
 
@@ -202,6 +279,8 @@ void EditSpellDialog::UpdateShapeParams() {
     if(vis) shapeLabels[i]->SetLabel(kShapeParamLabels[sel][i]);
   }
   shapeParamPanel->Layout();
+  GetSizer()->Layout();
+  Fit();
 }
 
 void EditSpellDialog::UpdateImpactParams() {
@@ -215,6 +294,8 @@ void EditSpellDialog::UpdateImpactParams() {
     if(vis) impactLabels[i]->SetLabel(kImpactParamLabels[sel][i]);
   }
   impactParamPanel->Layout();
+  GetSizer()->Layout();
+  Fit();
 }
 
 void EditSpellDialog::OnShapeChanged(wxCommandEvent&) { UpdateShapeParams(); }
@@ -319,10 +400,11 @@ void EditSkillDialog::OnClickCancel(wxCommandEvent&) { EndModal(wxID_CANCEL); }
 BEGIN_EVENT_TABLE(EditLootDialog, wxDialog)
   EVT_BUTTON(wxID_OK, EditLootDialog::OnClickOK)
   EVT_BUTTON(wxID_CANCEL, EditLootDialog::OnClickCancel)
+  EVT_SPINCTRL(ID_LOOT_ITEM_SPIN, EditLootDialog::OnItemIdChanged)
 END_EVENT_TABLE()
 
 EditLootDialog::EditLootDialog(wxWindow* parent, IOMapSec::SecMonsterLoot& loot) :
-  wxDialog(parent, wxID_ANY, "Edit Loot", wxDefaultPosition, wxSize(350, 220)),
+  wxDialog(parent, wxID_ANY, "Edit Loot", wxDefaultPosition, wxSize(350, 250)),
   loot(loot)
 {
   wxBoxSizer* topSizer = newd wxBoxSizer(wxVERTICAL);
@@ -330,11 +412,17 @@ EditLootDialog::EditLootDialog(wxWindow* parent, IOMapSec::SecMonsterLoot& loot)
   grid->AddGrowableCol(1);
 
   grid->Add(newd wxStaticText(this, wxID_ANY, "Item ID"), wxSizerFlags().CenterVertical());
-  itemIdCtrl = newd wxSpinCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, loot.itemId);
-  grid->Add(itemIdCtrl, wxSizerFlags(1).Expand());
+  {
+    wxBoxSizer* itemRow = newd wxBoxSizer(wxHORIZONTAL);
+    itemPreview = newd SpritePreviewPanel(this);
+    itemRow->Add(itemPreview, wxSizerFlags(0).Border(wxRIGHT, 5));
+    itemIdCtrl = newd wxSpinCtrl(this, ID_LOOT_ITEM_SPIN, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, loot.itemId);
+    itemRow->Add(itemIdCtrl, wxSizerFlags(1).Expand());
+    grid->Add(itemRow, wxSizerFlags(1).Expand());
+  }
 
   grid->Add(newd wxStaticText(this, wxID_ANY, "Max Quantity"), wxSizerFlags().CenterVertical());
-  quantityCtrl = newd wxSpinCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, loot.maxQuantity);
+  quantityCtrl = newd wxSpinCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 1, 100, loot.maxQuantity);
   grid->Add(quantityCtrl, wxSizerFlags(1).Expand());
 
   grid->Add(newd wxStaticText(this, wxID_ANY, "Probability (per mille)"), wxSizerFlags().CenterVertical());
@@ -349,6 +437,9 @@ EditLootDialog::EditLootDialog(wxWindow* parent, IOMapSec::SecMonsterLoot& loot)
   topSizer->Add(btnSizer, wxSizerFlags(0).Center().Border(wxALL, 10));
 
   SetSizer(topSizer);
+
+  // Initialize preview
+  if(loot.itemId > 0) itemPreview->SetItemSprite(loot.itemId);
 }
 
 void EditLootDialog::OnClickOK(wxCommandEvent&) {
@@ -359,6 +450,12 @@ void EditLootDialog::OnClickOK(wxCommandEvent&) {
 }
 
 void EditLootDialog::OnClickCancel(wxCommandEvent&) { EndModal(wxID_CANCEL); }
+
+void EditLootDialog::OnItemIdChanged(wxSpinEvent&) {
+  int id = itemIdCtrl->GetValue();
+  if(id > 0) itemPreview->SetItemSprite(id);
+  else itemPreview->ClearSprite();
+}
 
 // ============================================================================
 // EditMonstersDialog
@@ -384,6 +481,13 @@ BEGIN_EVENT_TABLE(EditMonstersDialog, wxDialog)
   EVT_BUTTON(ID_ADD_TALK, EditMonstersDialog::OnAddTalk)
   EVT_BUTTON(ID_EDIT_TALK, EditMonstersDialog::OnEditTalk)
   EVT_BUTTON(ID_REMOVE_TALK, EditMonstersDialog::OnRemoveTalk)
+  EVT_SPINCTRL(ID_OUTFIT_ID_SPIN, EditMonstersDialog::OnOutfitChanged)
+  EVT_SPINCTRL(ID_OUTFIT_HEAD_SPIN, EditMonstersDialog::OnOutfitChanged)
+  EVT_SPINCTRL(ID_OUTFIT_BODY_SPIN, EditMonstersDialog::OnOutfitChanged)
+  EVT_SPINCTRL(ID_OUTFIT_LEGS_SPIN, EditMonstersDialog::OnOutfitChanged)
+  EVT_SPINCTRL(ID_OUTFIT_FEET_SPIN, EditMonstersDialog::OnOutfitChanged)
+  EVT_SPINCTRL(ID_OUTFIT_ITEM_SPIN, EditMonstersDialog::OnOutfitChanged)
+  EVT_SPINCTRL(ID_CORPSE_SPIN, EditMonstersDialog::OnCorpseChanged)
 END_EVENT_TABLE()
 
 EditMonstersDialog::EditMonstersDialog(wxWindow* parent, const std::string& monDir) :
@@ -434,24 +538,39 @@ EditMonstersDialog::EditMonstersDialog(wxWindow* parent, const std::string& monD
   articleCtrl = newd wxTextCtrl(basicPanel, wxID_ANY, "");
   basicGrid->Add(articleCtrl, wxSizerFlags(1).Expand());
 
-  basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "Outfit ID"), wxSizerFlags().CenterVertical());
-  outfitIdCtrl = newd wxSpinCtrl(basicPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
-  basicGrid->Add(outfitIdCtrl, wxSizerFlags(1).Expand());
+  // Outfit ID + preview
+  basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "Outfit"), wxSizerFlags().CenterVertical());
+  {
+    wxBoxSizer* outfitRow = newd wxBoxSizer(wxHORIZONTAL);
+    outfitIdCtrl = newd wxSpinCtrl(basicPanel, ID_OUTFIT_ID_SPIN, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
+    outfitPreview = newd SpritePreviewPanel(basicPanel);
+    outfitRow->Add(outfitPreview, wxSizerFlags(0).Border(wxRIGHT, 5));
+    outfitRow->Add(outfitIdCtrl, wxSizerFlags(1).Expand());
+    basicGrid->Add(outfitRow, wxSizerFlags(1).Expand());
+  }
 
   const char* colorLabels[] = {"Head", "Body", "Legs", "Feet"};
+  const int colorIds[] = {ID_OUTFIT_HEAD_SPIN, ID_OUTFIT_BODY_SPIN, ID_OUTFIT_LEGS_SPIN, ID_OUTFIT_FEET_SPIN};
   for(int i = 0; i < 4; ++i) {
-    basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, wxString("Outfit ") + colorLabels[i]), wxSizerFlags().CenterVertical());
-    outfitColorCtrls[i] = newd wxSpinCtrl(basicPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 255, 0);
+    basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, wxString("  ") + colorLabels[i]), wxSizerFlags().CenterVertical());
+    outfitColorCtrls[i] = newd wxSpinCtrl(basicPanel, colorIds[i], "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 255, 0);
     basicGrid->Add(outfitColorCtrls[i], wxSizerFlags(1).Expand());
   }
 
-  basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "Outfit ItemType"), wxSizerFlags().CenterVertical());
-  outfitItemTypeCtrl = newd wxSpinCtrl(basicPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
+  basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "  ItemType"), wxSizerFlags().CenterVertical());
+  outfitItemTypeCtrl = newd wxSpinCtrl(basicPanel, ID_OUTFIT_ITEM_SPIN, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
   basicGrid->Add(outfitItemTypeCtrl, wxSizerFlags(1).Expand());
 
+  // Corpse + preview
   basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "Corpse"), wxSizerFlags().CenterVertical());
-  corpseCtrl = newd wxSpinCtrl(basicPanel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
-  basicGrid->Add(corpseCtrl, wxSizerFlags(1).Expand());
+  {
+    wxBoxSizer* corpseRow = newd wxBoxSizer(wxHORIZONTAL);
+    corpseCtrl = newd wxSpinCtrl(basicPanel, ID_CORPSE_SPIN, "", wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0, 99999, 0);
+    corpsePreview = newd SpritePreviewPanel(basicPanel);
+    corpseRow->Add(corpsePreview, wxSizerFlags(0).Border(wxRIGHT, 5));
+    corpseRow->Add(corpseCtrl, wxSizerFlags(1).Expand());
+    basicGrid->Add(corpseRow, wxSizerFlags(1).Expand());
+  }
 
   basicGrid->Add(newd wxStaticText(basicPanel, wxID_ANY, "Blood"), wxSizerFlags().CenterVertical());
   wxArrayString bloodChoices;
@@ -537,7 +656,7 @@ EditMonstersDialog::EditMonstersDialog(wxWindow* parent, const std::string& monD
   spellList = newd wxListCtrl(spellsPanel, ID_SPELL_LIST, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
   spellList->InsertColumn(0, "Shape", wxLIST_FORMAT_LEFT, 180);
   spellList->InsertColumn(1, "Impact", wxLIST_FORMAT_LEFT, 220);
-  spellList->InsertColumn(2, "Delay", wxLIST_FORMAT_RIGHT, 50);
+  spellList->InsertColumn(2, "Chance (1/N)", wxLIST_FORMAT_RIGHT, 90);
   spellsSizer->Add(spellList, wxSizerFlags(1).Expand().Border(wxALL, 5));
   wxBoxSizer* spellBtnSizer = newd wxBoxSizer(wxHORIZONTAL);
   spellBtnSizer->Add(newd wxButton(spellsPanel, ID_ADD_SPELL, "Add"), wxSizerFlags(1));
@@ -698,6 +817,7 @@ void EditMonstersDialog::LoadMonster(int raceNumber) {
   RefreshSpellList();
   RefreshInventoryList();
   RefreshTalkList();
+  RefreshPreviews();
 }
 
 void EditMonstersDialog::OnListSelect(wxCommandEvent&) {
@@ -850,14 +970,36 @@ void EditMonstersDialog::RefreshSpellList() {
   }
 }
 
+static wxBitmap MakeItemBitmap(int clientItemId) {
+  wxBitmap bmp(32, 32, 24);
+  wxMemoryDC dc(bmp);
+  dc.SetBrush(*wxWHITE_BRUSH);
+  dc.SetPen(*wxWHITE_PEN);
+  dc.DrawRectangle(0, 0, 32, 32);
+  if(!g_gui.gfx.isUnloaded() && clientItemId > 0) {
+    Sprite* spr = g_gui.gfx.getSprite(clientItemId);
+    if(spr) spr->DrawTo(&dc, SPRITE_SIZE_32x32, 0, 0);
+  }
+  dc.SelectObject(wxNullBitmap);
+  return bmp;
+}
+
 void EditMonstersDialog::RefreshInventoryList() {
   inventoryList->DeleteAllItems();
   if(currentRace < 0) return;
   auto it = workingCopy.find(currentRace);
   if(it == workingCopy.end()) return;
+
+  wxImageList* imgList = newd wxImageList(32, 32, false);
   for(int i = 0; i < (int)it->second.inventory.size(); ++i) {
     const auto& loot = it->second.inventory[i];
-    long idx = inventoryList->InsertItem(i, std::to_string(loot.itemId));
+    imgList->Add(MakeItemBitmap(loot.itemId));
+  }
+  inventoryList->AssignImageList(imgList, wxIMAGE_LIST_SMALL);
+
+  for(int i = 0; i < (int)it->second.inventory.size(); ++i) {
+    const auto& loot = it->second.inventory[i];
+    long idx = inventoryList->InsertItem(i, std::to_string(loot.itemId), i);
     inventoryList->SetItem(idx, 1, std::to_string(loot.maxQuantity));
     inventoryList->SetItem(idx, 2, std::to_string(loot.probabilityPerMille));
   }
@@ -1015,4 +1157,24 @@ void EditMonstersDialog::OnRemoveTalk(wxCommandEvent&) {
   if(it == workingCopy.end() || sel >= (int)it->second.talk.size()) return;
   it->second.talk.erase(it->second.talk.begin() + sel);
   RefreshTalkList();
+}
+
+// ---- Sprite previews ----
+
+void EditMonstersDialog::RefreshPreviews() {
+  if(currentRace < 0) {
+    outfitPreview->ClearSprite();
+    corpsePreview->ClearSprite();
+    return;
+  }
+  outfitPreview->SetOutfit(outfitIdCtrl->GetValue(), outfitColorCtrls[0]->GetValue(), outfitColorCtrls[1]->GetValue(), outfitColorCtrls[2]->GetValue(), outfitColorCtrls[3]->GetValue());
+  corpsePreview->SetItemSprite(corpseCtrl->GetValue());
+}
+
+void EditMonstersDialog::OnOutfitChanged(wxSpinEvent&) {
+  RefreshPreviews();
+}
+
+void EditMonstersDialog::OnCorpseChanged(wxSpinEvent&) {
+  corpsePreview->SetItemSprite(corpseCtrl->GetValue());
 }
