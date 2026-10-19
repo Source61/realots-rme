@@ -376,6 +376,18 @@ void IOMinimap::readBlocks()
 		if (tile->isBlocking()) {
 			minimapTile.flags |= MinimapTileNotWalkable;
 		}
+		if (tile->isPZ()) {
+			minimapTile.flags |= MinimapTileProtectionZone;
+		}
+		if (testFlags(tile->getMapFlags(), TILESTATE_NOLOGOUT)) {
+			minimapTile.flags |= MinimapTileNoLogout;
+		}
+		if (testFlags(tile->getMapFlags(), TILESTATE_REFRESH)) {
+			minimapTile.flags |= MinimapTileRefresh;
+		}
+		if (tile->isHouseTile()) {
+			minimapTile.flags |= MinimapTileHouse;
+		}
 		//if (!tile->isPathable()) {
 			//minimapTile.flags |= MinimapTileNotPathable;
 		//}

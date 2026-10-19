@@ -42,7 +42,11 @@ enum {
 enum MinimapTileFlags {
 	MinimapTileWasSeen = 1,
 	MinimapTileNotPathable = 2,
-	MinimapTileNotWalkable = 4
+	MinimapTileNotWalkable = 4,
+	MinimapTileProtectionZone = 8,
+	MinimapTileNoLogout = 16,
+	MinimapTileRefresh = 32,
+	MinimapTileHouse = 64
 };
 
 #pragma pack(push,1) // disable memory alignment
