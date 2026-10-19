@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.16...4.2)
 
 project(rme)
 
@@ -6,7 +6,6 @@ if(NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-find_package(Boost 1.66.0 REQUIRED COMPONENTS date_time system filesystem iostreams)
 find_package(fmt CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
@@ -20,10 +19,6 @@ find_package(OpenGL REQUIRED)
 #if(APPLE)
 #    set(CMAKE_PREFIX_PATH /usr/local/opt/libarchive)
 #endif()
-
-if(WIN32)
-    set(Boost_THREADAPI win32)
-endif()
 
 find_package(wxWidgets COMPONENTS html aui gl adv core net base REQUIRED)
 
@@ -51,9 +46,5 @@ target_link_libraries(${PROJECT_NAME}
     ${GLUT_LIBRARIES}
     ${ZLIB_LIBRARIES}
     fmt::fmt
-    Boost::date_time
-    Boost::system
-    Boost::filesystem
-    Boost::iostreams
     nlohmann_json::nlohmann_json
 )

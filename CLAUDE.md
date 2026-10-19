@@ -14,7 +14,7 @@ cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
 make -j$(nproc)
 ```
 
-Dependencies: wxWidgets (>=3.0), Boost (>=1.66: date_time, system, filesystem, iostreams), OpenGL, GLUT, ZLIB, fmt, nlohmann_json. PugiXML is bundled in `source/ext/`.
+Dependencies: CMake (>=3.16), wxWidgets (>=3.0), standalone asio (>=1.12), OpenGL, GLUT, ZLIB, fmt, nlohmann_json. PugiXML is bundled in `source/ext/`.
 
 There are no automated tests.
 

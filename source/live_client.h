@@ -34,7 +34,7 @@ class LiveClient : public LiveSocket
 
 		//
 		bool connect(const std::string& address, uint16_t port);
-		void tryConnect(asio::ip::tcp::resolver::iterator endpoint);
+		void tryConnect(const asio::ip::tcp::resolver::results_type& endpoints);
 
 		void close();
 		bool handleError(const std::error_code& error);

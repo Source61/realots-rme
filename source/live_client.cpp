@@ -53,13 +53,12 @@ bool LiveClient::connect(const std::string& address, uint16_t port)
 		socket = std::make_shared<asio::ip::tcp::socket>(service);
 	}
 
-	asio::ip::tcp::resolver::query query(address, std::to_string(port));
-	resolver->async_resolve(query, [this](const std::error_code& error, asio::ip::tcp::resolver::iterator endpoint_iterator) -> void
+	resolver->async_resolve(address, std::to_string(port), [this](const std::error_code& error, const asio::ip::tcp::resolver::results_type& endpoints) -> void
 	{
 		if(error) {
 			logMessage("Error: " + error.message());
 		} else {
-			tryConnect(endpoint_iterator);
+			tryConnect(endpoints);
 		}
 	});
 
@@ -90,26 +89,18 @@ bool LiveClient::connect(const std::string& address, uint16_t port)
 	return true;
 }
 
-void LiveClient::tryConnect(asio::ip::tcp::resolver::iterator endpoint_iterator)
+void LiveClient::tryConnect(const asio::ip::tcp::resolver::results_type& endpoints)
 {
-	if(stopped) {
+	if(stopped || endpoints.empty()) {
 		return;
 	}
 
-	if(endpoint_iterator == asio::ip::tcp::resolver::iterator()) {
-		return;
-	}
+	logMessage("Joining server " + endpoints.begin()->host_name() + ":" + endpoints.begin()->service_name() + "...");
 
-	logMessage("Joining server " + endpoint_iterator->host_name() + ":" + endpoint_iterator->service_name() + "...");
-
-	asio::async_connect(*socket, endpoint_iterator, [this](std::error_code error, asio::ip::tcp::resolver::iterator endpoint_iterator) -> void
+	asio::async_connect(*socket, endpoints, [this](std::error_code error, const asio::ip::tcp::endpoint&) -> void
 	{
-		if(!socket->is_open()) {
-			tryConnect(++endpoint_iterator);
-		} else if(error) {
-			if(handleError(error)) {
-				tryConnect(++endpoint_iterator);
-			} else {
+		if(error) {
+			if(!handleError(error)) {
 				wxTheApp->CallAfter([this]() {
 					close();
 					g_gui.CloseLiveEditors(this);

@@ -101,8 +101,10 @@ Editor::Editor(CopyBuffer& copybuffer, const FileName& fn) :
 	MapVersion ver;
 
 	if(ext == "sec") {
-		// .sec files don't contain version info — use current editor version
+		// .sec files don't contain version info — use current editor version, else the default one
 		ClientVersionID currentVer = g_gui.GetCurrentVersionID();
+		if(currentVer == CLIENT_VERSION_NONE)
+			currentVer = ClientVersionID(g_settings.getInteger(Config::DEFAULT_CLIENT_VERSION));
 		if(currentVer == CLIENT_VERSION_NONE) {
 			throw std::runtime_error("Please select a client version before opening .sec files.");
 		}
