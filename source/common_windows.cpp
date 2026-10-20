@@ -522,6 +522,12 @@ ExportMiniMapWindow::ExportMiniMapWindow(wxWindow* parent, Editor& editor) :
 	tmpsizer->Add(floor_number, 0, wxALL, 5);
 	sizer->Add(tmpsizer, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 5);
 
+	// Tile flags (PZ, no-logout, refresh, house), only stored in .otmm
+	tile_flags_checkbox = newd wxCheckBox(this, wxID_ANY, "Tile flags");
+	tile_flags_checkbox->SetValue(g_settings.getBoolean(Config::MINIMAP_EXPORT_TILE_FLAGS));
+	tile_flags_checkbox->SetToolTip("Include protection zone, no-logout, refresh and house flags (requires custom client).");
+	sizer->Add(tile_flags_checkbox, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+
 	// OK/Cancel buttons
 	tmpsizer = newd wxBoxSizer(wxHORIZONTAL);
 	tmpsizer->Add(ok_button = newd wxButton(this, wxID_OK, "OK"), wxSizerFlags(1).Center());
@@ -537,9 +543,10 @@ ExportMiniMapWindow::ExportMiniMapWindow(wxWindow* parent, Editor& editor) :
 
 ExportMiniMapWindow::~ExportMiniMapWindow() = default;
 
-void ExportMiniMapWindow::OnExportTypeChange(wxCommandEvent& event)
+void ExportMiniMapWindow::OnExportTypeChange(wxCommandEvent& WXUNUSED(event))
 {
-	floor_number->Enable(event.GetSelection() == 2);
+	floor_number->Enable(floor_options->GetSelection() == 2);
+	tile_flags_checkbox->Enable(format_options->GetSelection() == 0);
 }
 
 void ExportMiniMapWindow::OnClickBrowse(wxCommandEvent& WXUNUSED(event))
@@ -573,10 +580,12 @@ void ExportMiniMapWindow::OnClickOK(wxCommandEvent& WXUNUSED(event))
 	std::string directory = directory_text_field->GetValue().ToStdString();
 	std::string file_name = file_name_text_field->GetValue().ToStdString();
 	int floor = floor_number->GetValue();
+	bool tile_flags = tile_flags_checkbox->GetValue();
 
 	g_settings.setString(Config::MINIMAP_EXPORT_DIR, directory);
+	g_settings.setInteger(Config::MINIMAP_EXPORT_TILE_FLAGS, tile_flags);
 
-	IOMinimap io(&editor, format, mode, true);
+	IOMinimap io(&editor, format, mode, true, tile_flags);
 	if (!io.saveMinimap(directory, file_name, floor)) {
 		g_gui.PopupDialog("Error", io.getError(), wxOK);
 	}

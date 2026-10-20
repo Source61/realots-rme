@@ -133,6 +133,7 @@ protected:
 	wxTextCtrl* file_name_text_field;
 	wxChoice* floor_options;
 	wxSpinCtrl* floor_number;
+	wxCheckBox* tile_flags_checkbox;
 	wxButton* ok_button;
 
 	DECLARE_EVENT_TABLE();

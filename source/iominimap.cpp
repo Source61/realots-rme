@@ -33,11 +33,12 @@ void MinimapBlock::updateTile(int x, int y, const MinimapTile& tile)
 	m_tiles[getTileIndex(x, y)] = tile;
 }
 
-IOMinimap::IOMinimap(Editor* editor, MinimapExportFormat format, MinimapExportMode mode, bool updateLoadbar) :
+IOMinimap::IOMinimap(Editor* editor, MinimapExportFormat format, MinimapExportMode mode, bool updateLoadbar, bool tileFlags) :
 	m_editor(editor),
 	m_format(format),
 	m_mode(mode),
-	m_updateLoadbar(updateLoadbar)
+	m_updateLoadbar(updateLoadbar),
+	m_tileFlags(tileFlags)
 {
 }
 
@@ -376,17 +377,19 @@ void IOMinimap::readBlocks()
 		if (tile->isBlocking()) {
 			minimapTile.flags |= MinimapTileNotWalkable;
 		}
-		if (tile->isPZ()) {
-			minimapTile.flags |= MinimapTileProtectionZone;
-		}
-		if (testFlags(tile->getMapFlags(), TILESTATE_NOLOGOUT)) {
-			minimapTile.flags |= MinimapTileNoLogout;
-		}
-		if (testFlags(tile->getMapFlags(), TILESTATE_REFRESH)) {
-			minimapTile.flags |= MinimapTileRefresh;
-		}
-		if (tile->isHouseTile()) {
-			minimapTile.flags |= MinimapTileHouse;
+		if (m_tileFlags) {
+			if (tile->isPZ()) {
+				minimapTile.flags |= MinimapTileProtectionZone;
+			}
+			if (testFlags(tile->getMapFlags(), TILESTATE_NOLOGOUT)) {
+				minimapTile.flags |= MinimapTileNoLogout;
+			}
+			if (testFlags(tile->getMapFlags(), TILESTATE_REFRESH)) {
+				minimapTile.flags |= MinimapTileRefresh;
+			}
+			if (tile->isHouseTile()) {
+				minimapTile.flags |= MinimapTileHouse;
+			}
 		}
 		//if (!tile->isPathable()) {
 			//minimapTile.flags |= MinimapTileNotPathable;
